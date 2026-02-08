@@ -3,7 +3,7 @@ local Workspace = game:GetService("Workspace")
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
-local maxDistance = 200
+local maxDistance = 100
 local updateInterval = 50 -- 50ms = smooth + good performance
 local maxRAMLimitMB = 5000 -- 5GB RAM limit (for safety)
 
