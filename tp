@@ -1,0 +1,153 @@
+local UIS = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+-- Click-to-Teleport State
+local ctpEnabled = false
+
+-- GUI Elements
+local ScreenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+ScreenGui.Name = "DabloxCTP"
+ScreenGui.ResetOnSpawn = false
+
+-- Notification
+local Notification = Instance.new("Frame", ScreenGui)
+Notification.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Notification.Size = UDim2.new(0, 300, 0, 100)
+Notification.Position = UDim2.new(1, -320, 1, -120)
+Notification.Visible = true
+Notification.BackgroundTransparency = 1
+
+local NotifText = Instance.new("TextLabel", Notification)
+NotifText.Text = "Executed, thank you for using Dablox CTP"
+NotifText.Font = Enum.Font.GothamBold
+NotifText.TextSize = 16
+NotifText.TextColor3 = Color3.fromRGB(255, 255, 255)
+NotifText.Size = UDim2.new(1, 0, 0.7, 0)
+NotifText.BackgroundTransparency = 1
+
+local NotifButton = Instance.new("TextButton", Notification)
+NotifButton.Text = "Okay"
+NotifButton.Font = Enum.Font.GothamBold
+NotifButton.TextSize = 14
+NotifButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+NotifButton.Size = UDim2.new(0.4, 0, 0.3, 0)
+NotifButton.Position = UDim2.new(0.3, 0, 0.7, 0)
+NotifButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+
+-- Fade-in notification
+TweenService:Create(Notification, TweenInfo.new(0.5), {BackgroundTransparency = 0}):Play()
+task.delay(5, function()
+    if Notification.Visible then
+        TweenService:Create(Notification, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+        task.wait(0.5)
+        Notification.Visible = false
+    end
+end)
+
+NotifButton.MouseButton1Click:Connect(function()
+    TweenService:Create(Notification, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+    task.wait(0.5)
+    Notification.Visible = false
+end)
+
+-- Main Frame
+local MainFrame = Instance.new("Frame", ScreenGui)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.Size = UDim2.new(0, 300, 0, 200)
+MainFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+local Title = Instance.new("TextLabel", MainFrame)
+Title.Text = "Dablox Click-To-Teleport"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 18
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundTransparency = 1
+
+local MinimizeButton = Instance.new("TextButton", MainFrame)
+MinimizeButton.Text = "_"
+MinimizeButton.Font = Enum.Font.GothamBold
+MinimizeButton.TextSize = 18
+MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
+MinimizeButton.Position = UDim2.new(1, -60, 0, 0)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+
+local CloseButton = Instance.new("TextButton", MainFrame)
+CloseButton.Text = "X"
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.TextSize = 18
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.Size = UDim2.new(0, 30, 0, 30)
+CloseButton.Position = UDim2.new(1, -30, 0, 0)
+CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+
+local CTPButton = Instance.new("TextButton", MainFrame)
+CTPButton.Text = "Enable Click-to-Teleport"
+CTPButton.Font = Enum.Font.GothamBold
+CTPButton.TextSize = 16
+CTPButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CTPButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+CTPButton.Size = UDim2.new(0.8, 0, 0, 40)
+CTPButton.Position = UDim2.new(0.1, 0, 0.5, -20)
+
+-- Minimized View
+local MinimizedFrame = Instance.new("Frame", ScreenGui)
+MinimizedFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MinimizedFrame.Size = UDim2.new(0, 200, 0, 50)
+MinimizedFrame.Position = MainFrame.Position
+MinimizedFrame.Visible = false
+
+local MinimizedButton = Instance.new("TextButton", MinimizedFrame)
+MinimizedButton.Text = "Dablox CTP"
+MinimizedButton.Font = Enum.Font.GothamBold
+MinimizedButton.TextSize = 18
+MinimizedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizedButton.Size = UDim2.new(1, 0, 1, 0)
+MinimizedButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+
+-- Toggle Minimized
+MinimizeButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    MinimizedFrame.Position = MainFrame.Position
+    MinimizedFrame.Visible = true
+end)
+
+MinimizedButton.MouseButton1Click:Connect(function()
+    MinimizedFrame.Visible = false
+    MainFrame.Visible = true
+end)
+
+-- Close Button
+CloseButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    MinimizedFrame.Visible = false
+end)
+
+-- Click-to-Teleport Functionality
+CTPButton.MouseButton1Click:Connect(function()
+    ctpEnabled = not ctpEnabled
+    if ctpEnabled then
+        CTPButton.Text = "Disable Click-to-Teleport"
+        CTPButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    else
+        CTPButton.Text = "Enable Click-to-Teleport"
+        CTPButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    end
+end)
+
+Mouse.Button1Down:Connect(function()
+    if ctpEnabled then
+        local mouseTarget = Mouse.Target
+        if mouseTarget then
+            local mousePosition = Mouse.Hit.p
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(mousePosition + Vector3.new(0, 3, 0))
+        end
+    end
+end)
