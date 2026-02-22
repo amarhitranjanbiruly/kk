@@ -18,3 +18,4 @@ if Scripts[PlaceId] then
 else
     Library:Notify("game not supported", 2)
 end
+--ef
