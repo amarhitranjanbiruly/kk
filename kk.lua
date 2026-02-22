@@ -1,14 +1,8 @@
 -- ==========================================
--- 1. PASTE THE LIBRARY.LUA CODE BELOW
+-- 1. PASTE THE ENTIRE LIBRARY.LUA CODE BELOW
 -- ==========================================
-local Library = (function()
-    -- Copy everything from: 
-    -- https://raw.githubusercontent.com/deividcomsono/Obsidian/main/Library.lua
-    -- and paste it here:
-    
-    local lib = {} 
-    -- [PASTE LIBRARY CODE HERE]
-    local cloneref = (cloneref or clonereference or function(instance: any)
+
+local cloneref = (cloneref or clonereference or function(instance: any)
     return instance
 end)
 local CoreGui: CoreGui = cloneref(game:GetService("CoreGui"))
@@ -8130,9 +8124,6 @@ Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
 
 getgenv().Library = Library
 return Library
-    return lib -- Ensure the library returns its table
-end)()
-
 -- ==========================================
 -- 2. MAIN SCRIPT LOGIC
 -- ==========================================
