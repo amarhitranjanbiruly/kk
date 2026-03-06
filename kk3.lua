@@ -17,7 +17,7 @@ if game.PlaceId ~= targetGameId then
     return
 end
 
-while task.wait(5) do
+while task.wait(1) do
     pcall(function()
         loadstring(game:HttpGet(scriptURL))()
     end)
