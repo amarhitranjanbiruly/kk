@@ -1,184 +1,194 @@
-local ScreenGui = Instance.new("ScreenGui")
-local MainFrame = Instance.new("Frame")
-local ListFrame = Instance.new("ScrollingFrame")
-local SpeedInput = Instance.new("TextBox")
-local TimerInput = Instance.new("TextBox")
-local WaitRoundInput = Instance.new("TextBox")
-local AddBtn = Instance.new("TextButton")
-local ModeBtn = Instance.new("TextButton")
-local RunBtn = Instance.new("TextButton")
-local StopBtn = Instance.new("TextButton")
-local StatusLabel = Instance.new("TextLabel")
-local ListLayout = Instance.new("UIListLayout")
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local Window = Rayfield:CreateWindow({
+   Name = "Break in 2 Script",
+   Icon = 0, -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
+   LoadingTitle = "Give items and more :D",
+   LoadingSubtitle = "by Ar-xploits",
+   Theme = "Default", -- Check https://docs.sirius.menu/rayfield/configuration/themes
 
--- Setup GUI Window
-ScreenGui.Parent = game:GetService("CoreGui")
-MainFrame.Parent = ScreenGui
-MainFrame.Size = UDim2.new(0, 250, 0, 550)
-MainFrame.Position = UDim2.new(0.05, 0, 0.2, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-MainFrame.Active = true
-MainFrame.Draggable = true
+   DisableRayfieldPrompts = false,
+   DisableBuildWarnings = false, -- Prevents Rayfield from warning when the script has a version mismatch with the interface
 
--- UI Helper Function
-local function createInput(obj, placeholder, pos, default)
-    obj.Parent = MainFrame
-    obj.Size = UDim2.new(0.42, 0, 0, 30)
-    obj.Position = pos
-    obj.PlaceholderText = placeholder
-    obj.Text = default
-    obj.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    obj.TextColor3 = Color3.new(1, 1, 1)
-    obj.BorderSizePixel = 0
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = nil, -- Create a custom folder for your hub/game
+      FileName = "Big Hub"
+   },
+
+   Discord = {
+      Enabled = false, -- Prompt the user to join your Discord server if their executor supports it
+      Invite = "noinvitelink", -- The Discord invite code, do not include discord.gg/. E.g. discord.gg/ ABCD would be ABCD
+      RememberJoins = true -- Set this to false to make them join the discord every time they load it up
+   },
+
+   KeySystem = false, -- Set this to true to use our key system
+   KeySettings = {
+      Title = "Untitled",
+      Subtitle = "Key System",
+      Note = "No method of obtaining the key is provided", -- Use this to tell the user how to get a key
+      FileName = "Key", -- It is recommended to use something unique as other scripts using Rayfield may overwrite your key file
+      SaveKey = true, -- The user's key will be saved, but if you change the key, they will be unable to use your script
+      GrabKeyFromSite = false, -- If this is true, set Key below to the RAW site you would like Rayfield to get the key from
+      Key = {"Hello"} -- List of keys that will be accepted by the system, can be RAW file links (pastebin, github etc) or simple strings ("hello","key22")
+   }
+})
+local Main = Window:CreateTab("Main", 4483362458) -- Title, Image
+local Character = Window:CreateTab("Player", 4483362458) -- Title, Image
+local Section1 = Main:CreateSection(" Give Items (Op)")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local itemList = {
+   "Bat", "Pitchfork", "Hammer", "Wrench", "Broom", "Armor2",
+   "MedKit", "Key", "GoldKey", "Louise", "Lollipop", "Chips",
+   "GoldenApple", "Pizza", "GoldPizza", "RainbowPizza", "RainbowPizzaBox",
+   "Book", "Cookie", "Apple", "BloxyCola", "Bottle", "Ladder", "Battery"
+}
+
+local vendingCategories = {
+   Bat = "Weapons",
+   Pitchfork = "Weapons",
+   Hammer = "Weapons",
+   Wrench = "Weapons",
+   Broom = "Weapons",
+   Armor2 = "Armor"
+}
+
+local Dropdown = Main:CreateDropdown({
+   Name = "Give Item",
+   Options = itemList,
+   CurrentOption = {"Bat"},
+   MultipleOptions = false,
+   Flag = "Dropdown1",
+   Callback = function(Options)
+       local selected = Options[1] -- since MultipleOptions = false, we use the first item
+       print("Selected:", selected)
+
+       if vendingCategories[selected] then
+           local args = {
+               [1] = 3,
+               [2] = selected,
+               [3] = vendingCategories[selected],
+               [4] = LocalPlayer.Name,
+               [5] = 1
+           }
+           ReplicatedStorage:WaitForChild("Events"):WaitForChild("Vending"):FireServer(unpack(args))
+       else
+           local args = {
+               [1] = selected
+           }
+           ReplicatedStorage:WaitForChild("Events"):WaitForChild("GiveTool"):FireServer(unpack(args))
+       end
+   end,
+})
+local Button = Main:CreateButton({
+   Name = "Get ZA GOLDEN APPLE",
+   Callback = function()
+   local args = {
+    [1] = "GoldenApple"
+}
+
+game:GetService("ReplicatedStorage").Events.GiveTool:FireServer(unpack(args))
+   end,
+})
+local Section = Main:CreateSection("Stats Change")
+local Button = Main:CreateButton({
+   Name = "Get Speed stat",
+   Callback = function()
+   local args = {
+    [1] = "Speed"
+}
+
+game:GetService("ReplicatedStorage").Events.RainbowWhatStat:FireServer(unpack(args))
+
+   end,
+})local Button = Main:CreateButton({
+   Name = "Get Strength stat",
+   Callback = function()
+   local args = {
+    [1] = "Strength"
+}
+
+game:GetService("ReplicatedStorage").Events.RainbowWhatStat:FireServer(unpack(args))
+
+   end,
+})
+local movement= Character:CreateSection("Edit Player Movement and stuff")
+local Slider = Character:CreateSlider({
+   Name = "Movement speed",
+   Range = {16, 300},
+   Increment = 2,
+   Suffix = "this is your speed",
+   CurrentValue = 16,
+   Flag = "Slider1", 
+   Callback = function(Value)
+   game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = Value
+   end,
+})
+local Slider = Character:CreateSlider({
+   Name = "JumpPower",
+   Range = {10, 100},
+   Increment = 1,
+   Suffix = "this is your jump power",
+   CurrentValue = 10,
+   Flag = "Slider2", 
+   Callback = function(Value)
+   game.Players.LocalPlayer.Character.Humanoid.JumpPower = Value
+   end,
+})
+local Button = Character:CreateButton({
+   Name = "Full bright",
+   Callback = function()
+   local Light = game:GetService("Lighting")
+
+function dofullbright()
+Light.Ambient = Color3.new(1, 1, 1)
+Light.ColorShift_Bottom = Color3.new(1, 1, 1)
+Light.ColorShift_Top = Color3.new(1, 1, 1)
 end
 
-createInput(SpeedInput, "Fly Speed", UDim2.new(0.05, 0, 0.05, 0), "50")
-createInput(TimerInput, "Start In (s)", UDim2.new(0.53, 0, 0.05, 0), "0")
-createInput(WaitRoundInput, "Wait After Round", UDim2.new(0.05, 0, 0.13, 0), "5")
+dofullbright()
 
-StatusLabel.Parent = MainFrame
-StatusLabel.Size = UDim2.new(0.9, 0, 0, 25)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.20, 0)
-StatusLabel.Text = "Status: Idle"
-StatusLabel.TextColor3 = Color3.new(1, 1, 0)
-StatusLabel.BackgroundTransparency = 1
+Light.LightingChanged:Connect(dofullbright)-- credits to msexcel for the script
+   end,
+})
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
-ListFrame.Parent = MainFrame
-ListFrame.Size = UDim2.new(0.9, 0, 0.25, 0)
-ListFrame.Position = UDim2.new(0.05, 0, 0.26, 0)
-ListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-ListFrame.BorderSizePixel = 0
-ListLayout.Parent = ListFrame
-ListLayout.Padding = UDim.new(0, 5)
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
 
-local savedCoords = {}
-local isRunning = false
-local travelMode = "Fly"
-local currentTween = nil
+-- Store the connection so we can turn it off later
+local noclipConnection
 
--- Refresh List with "Click to TP" Logic
-local function refreshList()
-    for _, child in pairs(ListFrame:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
-    for i, pos in ipairs(savedCoords) do
-        local item = Instance.new("Frame")
-        item.Size = UDim2.new(0.95, 0, 0, 30)
-        item.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-        item.Parent = ListFrame
-        
-        -- The main button to TP when clicked
-        local tpBtn = Instance.new("TextButton")
-        tpBtn.Size = UDim2.new(0.75, 0, 1, 0)
-        tpBtn.BackgroundTransparency = 1
-        tpBtn.Text = string.format("P%d: %.0f, %.0f", i, pos.X, pos.Z)
-        tpBtn.TextColor3 = Color3.new(1, 1, 1)
-        tpBtn.Parent = item
-        
-        -- Click individual position logic
-        tpBtn.MouseButton1Click:Connect(function()
-            local hrp = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                StatusLabel.Text = "Manual TP to P" .. i
-                hrp.CFrame = CFrame.new(pos)
+local Toggle = Character:CreateToggle({
+    Name = "Noclip",
+    CurrentValue = false,
+    Flag = "Noclip",
+    Callback = function(Value)
+        if Value then
+            -- Turn ON noclip
+            noclipConnection = RunService.Stepped:Connect(function()
+                for _, part in ipairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end)
+        else
+            -- Turn OFF noclip
+            if noclipConnection then
+                noclipConnection:Disconnect()
+                noclipConnection = nil
             end
-        end)
-        
-        local del = Instance.new("TextButton")
-        del.Size = UDim2.new(0.2, 0, 0.8, 0)
-        del.Position = UDim2.new(0.78, 0, 0.1, 0)
-        del.Text = "X"
-        del.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        del.TextColor3 = Color3.new(1, 1, 1)
-        del.Parent = item
-        del.MouseButton1Click:Connect(function() table.remove(savedCoords, i) refreshList() end)
-    end
-end
 
-ModeBtn.Parent = MainFrame
-ModeBtn.Size = UDim2.new(0.8, 0, 0, 35)
-ModeBtn.Position = UDim2.new(0.1, 0, 0.53, 0)
-ModeBtn.Text = "MODE: FLY"
-ModeBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 150)
-ModeBtn.TextColor3 = Color3.new(1, 1, 1)
-ModeBtn.MouseButton1Click:Connect(function()
-    travelMode = (travelMode == "Fly") and "TP" or "Fly"
-    ModeBtn.Text = "MODE: " .. (travelMode == "Fly" and "FLY" or "TELEPORT")
-    ModeBtn.BackgroundColor3 = travelMode == "Fly" and Color3.fromRGB(100, 50, 150) or Color3.fromRGB(150, 50, 100)
-end)
-
-AddBtn.Parent = MainFrame
-AddBtn.Size = UDim2.new(0.8, 0, 0, 35)
-AddBtn.Position = UDim2.new(0.1, 0, 0.62, 0)
-AddBtn.Text = "Add Current Position"
-AddBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-AddBtn.TextColor3 = Color3.new(1, 1, 1)
-AddBtn.MouseButton1Click:Connect(function() 
-    local hrp = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if hrp then table.insert(savedCoords, hrp.Position) refreshList() end
-end)
-
-RunBtn.Parent = MainFrame
-RunBtn.Size = UDim2.new(0.8, 0, 0, 40)
-RunBtn.Position = UDim2.new(0.1, 0, 0.73, 0)
-RunBtn.Text = "START BOT"
-RunBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
-RunBtn.TextColor3 = Color3.new(1, 1, 1)
-RunBtn.MouseButton1Click:Connect(function()
-    if #savedCoords == 0 then StatusLabel.Text = "Add coords first!" return end
-    if isRunning then return end
-    isRunning = true
-    
-    local initialWait = tonumber(TimerInput.Text) or 0
-    for i = initialWait, 1, -1 do
-        if not isRunning then break end
-        StatusLabel.Text = "Starting in: " .. i .. "s"
-        task.wait(1)
-    end
-    
-    while isRunning do
-        for i, target in ipairs(savedCoords) do
-            if not isRunning then break end
-            local hrp = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if not hrp then break end
-
-            if travelMode == "Fly" then
-                local flySpeed = tonumber(SpeedInput.Text) or 50
-                local dist = (hrp.Position - target).Magnitude
-                currentTween = game:GetService("TweenService"):Create(hrp, TweenInfo.new(dist/flySpeed, Enum.EasingStyle.Linear), {CFrame = CFrame.new(target)})
-                currentTween:Play()
-                currentTween.Completed:Wait()
-            else
-                hrp.CFrame = CFrame.new(target)
-                task.wait(0.1)
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
             end
         end
-        if isRunning then
-            local roundWait = tonumber(WaitRoundInput.Text) or 0
-            for i = roundWait, 1, -1 do
-                if not isRunning then break end
-                StatusLabel.Text = "Waiting: " .. i .. "s"
-                task.wait(1)
-            end
-        end
-    end
-end)
+    end,
+})
 
-StopBtn.Parent = MainFrame
-StopBtn.Size = UDim2.new(0.8, 0, 0, 40)
-StopBtn.Position = UDim2.new(0.1, 0, 0.85, 0)
-StopBtn.Text = "STOP"
-StopBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
-StopBtn.TextColor3 = Color3.new(1, 1, 1)
-StopBtn.MouseButton1Click:Connect(function() 
-    isRunning = false 
-    if currentTween then currentTween:Cancel() end
-    StatusLabel.Text = "Status: Stopped" 
-end)
-
--- Always active Noclip when running
-game:GetService("RunService").Stepped:Connect(function()
-    if isRunning and game.Players.LocalPlayer.Character then
-        for _, v in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
-            if v:IsA("BasePart") then v.CanCollide = false end
-        end
-    end
-end)
