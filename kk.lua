@@ -1,6 +1,6 @@
 --[[
     Advanced Aimbot GUI + Configuration System
-    Version: 2.3.0 (Full Mobile Support)
+    Version: 2.4.0 (Fixed Mobile Trigger & Centered FOV)
     
     Features:
     - Toggle Menu: Press INSERT (Customizable)
@@ -9,7 +9,7 @@
     - Wall Check / Team Check
     - Mouse Movement & Camera Support
     - LockPart Selector: (Head, Neck, Chest)
-    - Mobile Support: Trigger icon with resize & lock, touch aiming
+    - Full Mobile Support: Centered FOV, touch hold-to-aim, trigger icon
 ]]
 
 --// Cache
@@ -92,6 +92,15 @@ Environment.Visuals = {
 }
 
 Environment.FOVCircle = Drawing.new("Circle")
+
+--// Helper: Check if a touch is over the TriggerIcon
+local function IsTouchOverIcon(touchPos)
+    if not TriggerIcon or not TriggerIcon.Visible then return false end
+    local absPos = TriggerIcon.AbsolutePosition
+    local absSize = TriggerIcon.AbsoluteSize
+    return touchPos.X >= absPos.X and touchPos.X <= absPos.X + absSize.X
+        and touchPos.Y >= absPos.Y and touchPos.Y <= absPos.Y + absSize.Y
+end
 
 --// Notification System
 local function Notify(title, text, duration)
@@ -179,13 +188,13 @@ local function GetClosestPlayer()
             local part = v.Character:FindFirstChild(targetBone) or v.Character:FindFirstChild("HumanoidRootPart")
             if part and IsVisible(part) then
                 local screenPoint, onScreen = Camera:WorldToViewportPoint(part.Position)
-                local touchLocation = UserInputService:GetMouseLocation() -- works for touch too
-                local distanceFromTouch = (Vector2(touchLocation.X, touchLocation.Y) - Vector2(screenPoint.X, screenPoint.Y)).Magnitude
+                local aimPoint = IsMobile and Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2) or UserInputService:GetMouseLocation()
+                local distanceFromCenter = (aimPoint - Vector2(screenPoint.X, screenPoint.Y)).Magnitude
                 
-                if distanceFromTouch < closestDistance then
+                if distanceFromCenter < closestDistance then
                     closestTarget = v
                     closestPart = part
-                    closestDistance = distanceFromTouch
+                    closestDistance = distanceFromCenter
                 end
             end
         end
@@ -206,7 +215,13 @@ local function Load()
             Environment.FOVCircle.Color = Environment.FOVSettings.Color
             Environment.FOVCircle.Transparency = Environment.FOVSettings.Transparency
             Environment.FOVCircle.Visible = Environment.FOVSettings.Visible
-            Environment.FOVCircle.Position = UserInputService:GetMouseLocation()
+            
+            -- Center FOV on mobile, at cursor on PC
+            if IsMobile then
+                Environment.FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+            else
+                Environment.FOVCircle.Position = UserInputService:GetMouseLocation()
+            end
         else
             Environment.FOVCircle.Visible = false
         end
@@ -216,12 +231,12 @@ local function Load()
 
             if Environment.Locked and Environment.LockedPart then
                 local screenPoint = Camera:WorldToViewportPoint(Environment.LockedPart.Position)
-                local touchLocation = UserInputService:GetMouseLocation()
                 
-                if Environment.Settings.UseMouseMovement and mousemoverel then
-                    -- Mouse movement (PC)
-                    local deltaX = (screenPoint.X - touchLocation.X)
-                    local deltaY = (screenPoint.Y - touchLocation.Y)
+                if Environment.Settings.UseMouseMovement and mousemoverel and not IsMobile then
+                    -- Mouse movement (PC only)
+                    local mouseLocation = UserInputService:GetMouseLocation()
+                    local deltaX = (screenPoint.X - mouseLocation.X)
+                    local deltaY = (screenPoint.Y - mouseLocation.Y)
                     
                     local moveX = deltaX * (Environment.Settings.Sensitivity / 2)
                     local moveY = deltaY * (Environment.Settings.Sensitivity / 2)
@@ -245,6 +260,7 @@ local function Load()
     ServiceConnections.InputBegan = UserInputService.InputBegan:Connect(function(Input)
         if Typing then return end
         
+        -- Menu key (keyboard only)
         if Input.KeyCode.Name == Environment.Settings.MenuKey then
             MenuVisible = not MenuVisible
             if ScreenGui then
@@ -256,12 +272,22 @@ local function Load()
         local triggerKey = Environment.Settings.TriggerKey
         local isTrigger = (Input.UserInputType.Name == triggerKey or Input.KeyCode.Name == triggerKey)
 
+        -- On mobile, ignore touches that are over the trigger icon
+        if IsMobile and Input.UserInputType == Enum.UserInputType.Touch and isTrigger then
+            if IsTouchOverIcon(Input.Position) then
+                return -- Let the icon handle it
+            end
+        end
+
         if isTrigger then
             if Environment.Settings.Toggle then
                 Running = not Running
                 if not Running then CancelLock() end
             else
                 Running = true
+            end
+            if TriggerIcon then
+                TriggerIcon.BackgroundColor3 = Running and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 50, 50)
             end
         end
     end)
@@ -272,9 +298,19 @@ local function Load()
         local triggerKey = Environment.Settings.TriggerKey
         local isTrigger = (Input.UserInputType.Name == triggerKey or Input.KeyCode.Name == triggerKey)
 
+        -- On mobile, ignore touches that are over the trigger icon
+        if IsMobile and Input.UserInputType == Enum.UserInputType.Touch and isTrigger then
+            if IsTouchOverIcon(Input.Position) then
+                return
+            end
+        end
+
         if isTrigger then
             Running = false
             CancelLock()
+            if TriggerIcon then
+                TriggerIcon.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+            end
         end
     end)
 end
@@ -402,46 +438,12 @@ local function CreateGUI()
         end
     end)
 
-    --// TRIGGER ICON CLICK toggles aimbot
+    --// TRIGGER ICON CLICK toggles aimbot (for toggle mode or as an alternative)
     TriggerIcon.MouseButton1Click:Connect(function()
         if Typing then return end
         Running = not Running
         if not Running then CancelLock() end
         UpdateTriggerIcon()
-    end)
-
-    --// Update Input Connection for MenuKey
-    if ServiceConnections.InputBegan then ServiceConnections.InputBegan:Disconnect() end
-    ServiceConnections.InputBegan = UserInputService.InputBegan:Connect(function(Input)
-        if Typing then return end
-        if Input.KeyCode.Name == Environment.Settings.MenuKey then
-            ToggleMenu()
-        end
-        local triggerKey = Environment.Settings.TriggerKey
-        local isTrigger = (Input.UserInputType.Name == triggerKey or Input.KeyCode.Name == triggerKey)
-
-        if isTrigger then
-            if Environment.Settings.Toggle then
-                Running = not Running
-                if not Running then CancelLock() end
-            else
-                Running = true
-            end
-            UpdateTriggerIcon()
-        end
-    end)
-
-    --// Update InputEnded to update icon
-    if ServiceConnections.InputEnded then ServiceConnections.InputEnded:Disconnect() end
-    ServiceConnections.InputEnded = UserInputService.InputEnded:Connect(function(Input)
-        if Typing or Environment.Settings.Toggle then return end
-        local triggerKey = Environment.Settings.TriggerKey
-        local isTrigger = (Input.UserInputType.Name == triggerKey or Input.KeyCode.Name == triggerKey)
-        if isTrigger then
-            Running = false
-            CancelLock()
-            UpdateTriggerIcon()
-        end
     end)
 
     --// 4. GUI STYLING
