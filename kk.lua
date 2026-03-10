@@ -1,6 +1,6 @@
 --[[
     Advanced Aimbot GUI + Configuration System
-    Version: 2.2.1 (Fixed Slider Jumping)
+    Version: 2.3.0 (Full Mobile Support)
     
     Features:
     - Toggle Menu: Press INSERT (Customizable)
@@ -9,7 +9,7 @@
     - Wall Check / Team Check
     - Mouse Movement & Camera Support
     - LockPart Selector: (Head, Neck, Chest)
-    - Mobile Support: Trigger icon with resize & lock
+    - Mobile Support: Trigger icon with resize & lock, touch aiming
 ]]
 
 --// Cache
@@ -39,6 +39,9 @@ local HttpService = game:GetService("HttpService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
+--// Mobile Detection
+local IsMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+
 --// Variables
 local Typing, Running, ServiceConnections = false, false, {}
 local MenuVisible = true
@@ -52,14 +55,14 @@ Environment.Settings = {
     WallCheck              = false,
     
     --// MOVEMENT SETTINGS
-    UseMouseMovement       = true, 
+    UseMouseMovement       = not IsMobile, -- default to camera on mobile
     Sensitivity            = 1,    
     
     --// KEYS
-    TriggerKey             = "MouseButton1", 
-    MenuKey                = "Insert", -- ✅ CUSTOM MENU KEY
+    TriggerKey             = IsMobile and "Touch" or "MouseButton1", 
+    MenuKey                = "Insert",
     Toggle                 = false,
-    LockPart               = "Head"    -- ✅ TARGET OPTION
+    LockPart               = "Head"
 }
 
 Environment.FOVSettings = {
@@ -176,13 +179,13 @@ local function GetClosestPlayer()
             local part = v.Character:FindFirstChild(targetBone) or v.Character:FindFirstChild("HumanoidRootPart")
             if part and IsVisible(part) then
                 local screenPoint, onScreen = Camera:WorldToViewportPoint(part.Position)
-                local mouseLocation = UserInputService:GetMouseLocation()
-                local distanceFromMouse = (Vector2(mouseLocation.X, mouseLocation.Y) - Vector2(screenPoint.X, screenPoint.Y)).Magnitude
+                local touchLocation = UserInputService:GetMouseLocation() -- works for touch too
+                local distanceFromTouch = (Vector2(touchLocation.X, touchLocation.Y) - Vector2(screenPoint.X, screenPoint.Y)).Magnitude
                 
-                if distanceFromMouse < closestDistance then
+                if distanceFromTouch < closestDistance then
                     closestTarget = v
                     closestPart = part
-                    closestDistance = distanceFromMouse
+                    closestDistance = distanceFromTouch
                 end
             end
         end
@@ -213,24 +216,19 @@ local function Load()
 
             if Environment.Locked and Environment.LockedPart then
                 local screenPoint = Camera:WorldToViewportPoint(Environment.LockedPart.Position)
-                local mouseLocation = UserInputService:GetMouseLocation()
+                local touchLocation = UserInputService:GetMouseLocation()
                 
-                if Environment.Settings.UseMouseMovement then
-                    -- CALCULATION IMPROVEMENT:
-                    -- We calculate the distance (delta)
-                    local deltaX = (screenPoint.X - mouseLocation.X)
-                    local deltaY = (screenPoint.Y - mouseLocation.Y)
+                if Environment.Settings.UseMouseMovement and mousemoverel then
+                    -- Mouse movement (PC)
+                    local deltaX = (screenPoint.X - touchLocation.X)
+                    local deltaY = (screenPoint.Y - touchLocation.Y)
                     
-                    -- We scale the movement based on sensitivity but prevent 'over-flicking'
-                    -- This math ensures high sensi stays "sticky" rather than "bouncy"
                     local moveX = deltaX * (Environment.Settings.Sensitivity / 2)
                     local moveY = deltaY * (Environment.Settings.Sensitivity / 2)
                     
-                    if mousemoverel then
-                        mousemoverel(moveX, moveY)
-                    end
+                    mousemoverel(moveX, moveY)
                 else
-                    -- Camera mode is already direct, so no glitching occurs here
+                    -- Camera movement (works on PC and mobile)
                     Camera.CFrame = CFrame.new(Camera.CFrame.Position, Environment.LockedPart.Position)
                 end
 
@@ -421,6 +419,7 @@ local function CreateGUI()
         end
         local triggerKey = Environment.Settings.TriggerKey
         local isTrigger = (Input.UserInputType.Name == triggerKey or Input.KeyCode.Name == triggerKey)
+
         if isTrigger then
             if Environment.Settings.Toggle then
                 Running = not Running
@@ -541,7 +540,7 @@ local function CreateGUI()
         end)
     end
 
-    --// FIXED SLIDER FUNCTION (no more jumping)
+    --// FIXED SLIDER
     local function CreateSlider(name, settingTable, settingKey, min, max, precise, onChange)
         local Frame = Instance.new("Frame")
         Frame.Size = UDim2.new(0, 290, 0, 45)
@@ -634,9 +633,15 @@ local function CreateGUI()
             local connection
             connection = UserInputService.InputBegan:Connect(function(input)
                 local key = nil
-                if input.UserInputType == Enum.UserInputType.Keyboard then key = input.KeyCode.Name
-                elseif input.UserInputType == Enum.UserInputType.MouseButton1 then key = "MouseButton1"
-                elseif input.UserInputType == Enum.UserInputType.MouseButton2 then key = "MouseButton2" end
+                if input.UserInputType == Enum.UserInputType.Keyboard then
+                    key = input.KeyCode.Name
+                elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    key = "MouseButton1"
+                elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    key = "MouseButton2"
+                elseif input.UserInputType == Enum.UserInputType.Touch then
+                    key = "Touch"
+                end
                 if key then
                     settingTable[settingKey] = key
                     BindBtn.Text = key
@@ -719,7 +724,6 @@ local function CreateGUI()
     CreateToggle("Filled FOV", Environment.FOVSettings, "Filled")
     CreateSection("Mobile Settings")
     CreateToggle("Show Trigger Icon", Environment.MobileSettings, "ShowTriggerIcon")
-    -- Slider for icon size with callback
     CreateSlider("Icon Size", Environment.MobileSettings, "IconSize", 30, 120, false, function(val)
         TriggerIcon.Size = UDim2.new(0, val, 0, val)
         TriggerIcon.TextSize = val * 0.5
