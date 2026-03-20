@@ -1,4 +1,3 @@
-
 -- Aimbot with Toggle, FOV Slider, TeamCheck, WallCheck, IgnoreGround, ESP, and Advanced GUI
 -- Services
 local Players = game:GetService("Players")
@@ -14,12 +13,12 @@ local aimbotEnabled = false
 local espEnabled = true
 local wallCheckEnabled = true
 local teamCheckEnabled = true
-local ignoreGroundEnabled = true   -- NEW: ignore grounded players
+local ignoreGroundEnabled = true
 local fovRadius = 100
 local targetPart = "Head"
 local floatingIconVisible = true
 local guiLocked = false
-local panelSize = {Width = 280, Height = 420}  -- increased height for new toggle
+local panelSize = {Width = 280, Height = 420}  -- base size
 
 -- ESP storage
 local espObjects = {}
@@ -49,15 +48,14 @@ local function isAlive(character)
 end
 
 local function isGrounded(character)
-    if not ignoreGroundEnabled then return false end  -- if ignore ground is OFF, we don't skip grounded players
+    if not ignoreGroundEnabled then return false end
     local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return true end  -- treat as grounded if no root part (should not happen)
-    -- Raycast downwards to check if there's a part within 5 studs
+    if not rootPart then return true end
     local rayParams = RaycastParams.new()
     rayParams.FilterDescendantsInstances = {character}
     rayParams.FilterType = Enum.RaycastFilterType.Blacklist
     local result = Workspace:Raycast(rootPart.Position, Vector3.new(0, -5, 0), rayParams)
-    return result ~= nil  -- if something is below, they're grounded
+    return result ~= nil
 end
 
 local function isVisible(part)
@@ -88,7 +86,6 @@ local function createESP(player)
         box.Parent = rootPart
         espObjects[player] = box
 
-        -- Clean up when character dies
         local humanoid = player.Character:FindFirstChild("Humanoid")
         if humanoid then
             local conn
@@ -102,7 +99,6 @@ local function createESP(player)
         end
     end
 
-    -- Re-add ESP when character respawns
     player.CharacterAdded:Connect(function()
         if espObjects[player] then
             espObjects[player]:Destroy()
@@ -123,7 +119,7 @@ local function removeESP(player)
     end
 end
 
--- Aimbot targeting (with ignore ground)
+-- Aimbot targeting
 local function getClosestTarget()
     local closestPlayer = nil
     local shortestDistance = math.huge
@@ -133,7 +129,7 @@ local function getClosestTarget()
         if not player.Character or not player.Character:FindFirstChild(targetPart) then continue end
         if not isAlive(player.Character) then continue end
         if isTeammate(player) then continue end
-        if isGrounded(player.Character) then continue end  -- skip if grounded and ignoreGround is ON
+        if isGrounded(player.Character) then continue end
 
         local part = player.Character[targetPart]
         local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
@@ -159,7 +155,7 @@ local function createFloatingIcon()
 
     floatingIcon = Instance.new("ImageButton")
     floatingIcon.Size = UDim2.new(0, 45, 0, 45)
-    floatingIcon.Position = UDim2.new(0, 50, 0, 150) -- default position
+    floatingIcon.Position = UDim2.new(0.05, 0, 0.2, 0)  -- scaled position (5% from left, 20% from top)
     floatingIcon.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     floatingIcon.BackgroundTransparency = 0.2
     floatingIcon.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
@@ -175,7 +171,6 @@ local function createFloatingIcon()
     iconLabel.TextSize = 28
     iconLabel.Parent = floatingIcon
 
-    -- Update color based on aimbot state
     local function updateIconColor()
         if aimbotEnabled then
             floatingIcon.ImageColor3 = Color3.fromRGB(100, 255, 100)
@@ -190,7 +185,6 @@ local function createFloatingIcon()
     floatingIcon.MouseButton1Click:Connect(function()
         aimbotEnabled = not aimbotEnabled
         updateIconColor()
-        -- Update main panel button text if it exists
         local panel = ScreenGui:FindFirstChild("MainPanel")
         if panel then
             local aimbotBtn = panel:FindFirstChild("AimbotBtn")
@@ -232,7 +226,6 @@ end
 
 -- GUI Creation
 local function createUI()
-    -- Destroy any existing GUI to avoid duplicates
     local existingGui = LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("AimbotUI")
     if existingGui then existingGui:Destroy() end
 
@@ -241,18 +234,18 @@ local function createUI()
     ScreenGui.ResetOnSpawn = false
     ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-    -- Main draggable panel
+    -- Main panel with scaled position
     local mainPanel = Instance.new("Frame")
     mainPanel.Name = "MainPanel"
     mainPanel.Size = UDim2.new(0, panelSize.Width, 0, panelSize.Height)
-    mainPanel.Position = UDim2.new(0, 20, 0, 100)
+    mainPanel.Position = UDim2.new(0.02, 20, 0.1, 20)  -- 2% from left, 10% from top, plus offset
     mainPanel.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
     mainPanel.BackgroundTransparency = 0.2
     mainPanel.BorderSizePixel = 0
     mainPanel.Visible = true
     mainPanel.Parent = ScreenGui
 
-    -- Title bar for dragging
+    -- Title bar
     local dragBar = Instance.new("Frame")
     dragBar.Size = UDim2.new(1, 0, 0, 30)
     dragBar.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
@@ -285,27 +278,55 @@ local function createUI()
         lockBtn.Text = guiLocked and "🔒" or "🔓"
     end)
 
-    -- Dragging logic (only when unlocked)
-    local dragging = false
-    local dragInput, dragStart, startPos
+    -- Dragging logic for whole panel (when unlocked)
+    local panelDragging = false
+    local panelDragStart, panelStartPos
 
-    dragBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and not guiLocked then
-            dragging = true
-            dragStart = input.Position
-            startPos = mainPanel.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
+    local function isOverInteractiveElement(element)
+        local interactive = {"TextButton", "ImageButton", "Frame"}
+        while element and element ~= mainPanel do
+            if table.find(interactive, element.ClassName) then
+                if element.Name == "SliderFrame" or element.Parent == sliderFrame or element.Parent == sizeSliderFrame then
+                    return true
                 end
-            end)
+                if element:IsA("TextButton") or element:IsA("ImageButton") then
+                    return true
+                end
+            end
+            element = element.Parent
+        end
+        return false
+    end
+
+    mainPanel.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and not guiLocked then
+            local mousePos = input.Position
+            local guiObject = mainPanel:GetGuiObjectsAtPosition(mousePos.X, mousePos.Y)
+            local isInteractive = false
+            for _, obj in ipairs(guiObject) do
+                if isOverInteractiveElement(obj) then
+                    isInteractive = true
+                    break
+                end
+            end
+            if not isInteractive then
+                panelDragging = true
+                panelDragStart = input.Position
+                panelStartPos = mainPanel.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        panelDragging = false
+                    end
+                end)
+            end
         end
     end)
 
-    dragBar.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement and dragging and not guiLocked then
-            local delta = input.Position - dragStart
-            mainPanel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    mainPanel.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement and panelDragging and not guiLocked then
+            local delta = input.Position - panelDragStart
+            mainPanel.Position = UDim2.new(panelStartPos.X.Scale, panelStartPos.X.Offset + delta.X,
+                                           panelStartPos.Y.Scale, panelStartPos.Y.Offset + delta.Y)
         end
     end)
 
@@ -321,6 +342,7 @@ local function createUI()
     sliderLabel.Parent = mainPanel
 
     local sliderFrame = Instance.new("Frame")
+    sliderFrame.Name = "SliderFrame"
     sliderFrame.Size = UDim2.new(0, 210, 0, 15)
     sliderFrame.Position = UDim2.new(0, 20, 0, 75)
     sliderFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
@@ -450,8 +472,8 @@ local function createUI()
     local function updateSize(pos)
         local relativeX = math.clamp(pos.X - sizeSliderFrame.AbsolutePosition.X, 0, sizeSliderFrame.AbsoluteSize.X)
         local ratio = relativeX / sizeSliderFrame.AbsoluteSize.X
-        local newWidth = 200 + ratio * 200  -- width between 200 and 400
-        local newHeight = 250 + ratio * 150 -- height between 250 and 400
+        local newWidth = 200 + ratio * 200
+        local newHeight = 250 + ratio * 150
         panelSize.Width = newWidth
         panelSize.Height = newHeight
         mainPanel.Size = UDim2.new(0, newWidth, 0, newHeight)
@@ -476,10 +498,10 @@ local function createUI()
         end
     end)
 
-    -- Gear icon to toggle main panel visibility
+    -- Gear icon to toggle main panel visibility (scaled position)
     local gearIcon = Instance.new("ImageButton")
     gearIcon.Size = UDim2.new(0, 40, 0, 40)
-    gearIcon.Position = UDim2.new(1, -50, 0, 20)
+    gearIcon.Position = UDim2.new(1, -50, 0.02, 20)
     gearIcon.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
     gearIcon.BackgroundTransparency = 0.5
     gearIcon.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
@@ -498,7 +520,6 @@ local function createUI()
         mainPanel.Visible = not mainPanel.Visible
     end)
 
-    -- Initial creation of floating icon if visible
     if floatingIconVisible then
         createFloatingIcon()
     end
