@@ -1,4 +1,5 @@
 {
+{
 "id": "a8c164e519905467",
 "username": "1",
 "password": "1",
@@ -11,4 +12,5 @@
 "password": "pass2",
 "expiresAt": "2025-11-30",
 "allowOffline": false
+}
 }
