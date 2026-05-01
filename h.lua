@@ -1,24 +1,22 @@
--- ========== NPCs in workspace.GAME.Suspects ==========
-local suspectsFolder = workspace:WaitForChild("GAME"):WaitForChild("Suspects")
+local function isPlayer(model)
+	-- Returns true if the model is a player character
+	return game.Players:GetPlayerFromCharacter(model) ~= nil
+end
 
-local function addOutlineToNPC(model)
+local function addOutline(model)
+	-- Must have a Humanoid, must NOT be a player, and no existing Highlight
 	if not model:FindFirstChild("Humanoid") then return end
+	if isPlayer(model) then return end
 	if model:FindFirstChild("Highlight") then return end
 	
-	-- Determine color based on first letter of model name
 	local name = model.Name
-	if #name == 0 then return end
-	local firstChar = string.sub(name, 1, 1):lower()  -- case-insensitive
+	local firstChar = string.sub(name, 1, 1):lower()
 	
 	local outlineColor
-	if firstChar == "c" then
-		outlineColor = Color3.new(0, 1, 0)   -- Green
-	elseif firstChar == "s" then
+	if firstChar == "g" then
 		outlineColor = Color3.new(1, 0, 0)   -- Red
 	else
-		-- Optional: skip NPCs that don't start with c or s
-		return
-		-- Or use a default color: outlineColor = Color3.new(1, 1, 0) -- yellow
+		outlineColor = Color3.new(0, 1, 0)   -- Green (default)
 	end
 	
 	local highlight = Instance.new("Highlight")
@@ -29,58 +27,28 @@ local function addOutlineToNPC(model)
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 end
 
-local function scanNPCs()
-	for _, model in ipairs(suspectsFolder:GetDescendants()) do
+-- Scan all existing models in workspace (any depth)
+local function scanAll()
+	for _, model in ipairs(workspace:GetDescendants()) do
 		if model:IsA("Model") and model:FindFirstChild("Humanoid") then
-			addOutlineToNPC(model)
+			addOutline(model)
 		end
 	end
 end
 
-local function watchNPCs()
-	suspectsFolder.DescendantAdded:Connect(function(descendant)
+-- Watch for new models added anywhere in workspace
+local function watchDescendants()
+	workspace.DescendantAdded:Connect(function(descendant)
+		-- Case: new Model with Humanoid appears
 		if descendant:IsA("Model") and descendant:FindFirstChild("Humanoid") then
-			addOutlineToNPC(descendant)
+			addOutline(descendant)
 		end
+		-- Case: a Humanoid is added to an existing Model
 		if descendant:IsA("Humanoid") and descendant.Parent and descendant.Parent:IsA("Model") then
-			addOutlineToNPC(descendant.Parent)
+			addOutline(descendant.Parent)
 		end
 	end)
 end
 
--- ========== (Optional) Traps in workspace.Traps ==========
-local trapsFolder = workspace:FindFirstChild("Traps")
-if trapsFolder then
-	local function addOutlineToTrap(obj)
-		if obj:FindFirstChild("Highlight") then return end
-		if not (obj:IsA("Model") or obj:IsA("BasePart")) then return end
-		-- Skip parts inside a Model (avoid double outline)
-		if obj:IsA("BasePart") and obj.Parent and obj.Parent:IsA("Model") then return end
-		
-		local highlight = Instance.new("Highlight")
-		highlight.Parent = obj
-		highlight.FillTransparency = 1
-		highlight.OutlineTransparency = 0
-		highlight.OutlineColor = Color3.new(1, 1, 0)  -- Yellow
-		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	end
-	
-	local function scanTraps()
-		for _, obj in ipairs(trapsFolder:GetDescendants()) do
-			addOutlineToTrap(obj)
-		end
-	end
-	
-	local function watchTraps()
-		trapsFolder.DescendantAdded:Connect(addOutlineToTrap)
-	end
-	
-	scanTraps()
-	watchTraps()
-else
-	warn("workspace.Traps not found – skipping trap outlines")
-end
-
--- ========== RUN NPC OUTLINING ==========
-scanNPCs()
-watchNPCs()
+scanAll()
+watchDescendants()
