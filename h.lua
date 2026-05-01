@@ -1,58 +1,54 @@
---// ESP for workspace.Ghost using outlines on VisibleParts
+-- ESP for workspace.Ghost (Fixed with per-part outlines)
 local Camera = workspace.CurrentCamera
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- Highlight storage
-local partHighlights = {}   -- [Part] = Highlight
-local function clearHighlights()
-    for part, highlight in pairs(partHighlights) do
-        if highlight and highlight.Parent then
-            highlight:Destroy()
-        end
-    end
-    table.clear(partHighlights)
+-- Configuration
+local maxDistance = 100
+local updateInterval = 50          -- milliseconds
+local maxRAMLimitMB = 1000
+
+-- Create reusable drawing objects (global box, line, health, name, dist)
+local function createMainDrawings()
+    local newBox = Drawing.new("Square")
+    local newLine = Drawing.new("Line")
+    local newHealth = Drawing.new("Line")
+    local newName = Drawing.new("Text")
+    local newDist = Drawing.new("Text")
+
+    newBox.Thickness = 2
+    newBox.Filled = false
+    newBox.Transparency = 0
+    newBox.Color = Color3.fromRGB(255, 0, 0)  -- red global box
+
+    newLine.Thickness = 1
+    newLine.Transparency = 0
+
+    newHealth.Thickness = 3
+    newHealth.Transparency = 0
+    newHealth.Color = Color3.fromRGB(0, 255, 0)
+
+    newName.Size = 13
+    newName.Center = true
+    newName.Outline = true
+    newName.Transparency = 0
+    newName.Color = Color3.fromRGB(255, 255, 255)
+
+    newDist.Size = 13
+    newDist.Center = true
+    newDist.Outline = true
+    newDist.Transparency = 0
+    newDist.Color = Color3.fromRGB(0, 255, 0)
+
+    return {box = newBox, line = newLine, health = newHealth, name = newName, dist = newDist}
 end
 
-local function createHighlightForPart(part, color)
-    if partHighlights[part] then return end
-    local highlight = Instance.new("Highlight")
-    highlight.Adornee = part
-    highlight.FillTransparency = 1          -- no fill, only outline
-    highlight.OutlineTransparency = 0
-    highlight.OutlineColor = color
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop  -- see through walls
-    highlight.Parent = part
-    partHighlights[part] = highlight
+-- Memory check
+local function getMemoryUsageMB()
+    return collectgarbage("count") / 1024
 end
 
-local function updateOutlines(ghostModel, isVisible)
-    local visiblePartsFolder = ghostModel:FindFirstChild("VisibleParts")
-    if not visiblePartsFolder then return end
-
-    local color = isVisible and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-
-    -- Gather all BaseParts inside VisibleParts (recursive)
-    local currentParts = {}
-    for _, part in ipairs(visiblePartsFolder:GetDescendants()) do
-        if part:IsA("BasePart") then
-            currentParts[part] = true
-            createHighlightForPart(part, color)
-            partHighlights[part].OutlineColor = color
-            partHighlights[part].Enabled = true
-        end
-    end
-
-    -- Disable / remove highlights for parts that no longer exist
-    for part, highlight in pairs(partHighlights) do
-        if not currentParts[part] or not part.Parent then
-            highlight:Destroy()
-            partHighlights[part] = nil
-        end
-    end
-end
-
--- Visibility check (angle based up to 40 studs, then raycast)
+-- Visibility check (angle + raycast)
 local function isVisible(targetPart, targetCharacter)
     if not targetPart then return false end
     local origin = Camera.CFrame.Position
@@ -69,65 +65,258 @@ local function isVisible(targetPart, targetCharacter)
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 
     local result = workspace:Raycast(origin, direction.Unit * distance, raycastParams)
-    if not result then return true end
-    return result.Instance and result.Instance:IsDescendantOf(targetCharacter)
+    return (not result) or result.Instance:IsDescendantOf(targetCharacter)
 end
 
--- Main ESP loop for Ghost
-local ghost = workspace:FindFirstChild("Ghost")
-if not ghost then
-    warn("Ghost not found in workspace – waiting for it to appear...")
-    local ghostAdded = workspace.ChildAdded:Wait()
-    if ghostAdded.Name == "Ghost" then ghost = ghostAdded else return end
-end
+-- Helper: Get 2D screen bounding box of a BasePart (returns {minX, maxX, minY, maxY} or nil if off-screen)
+local function getPartScreenBox(part)
+    local cframe = part.CFrame
+    local size = part.Size
+    local half = size / 2
 
-local active = true
+    local corners = {
+        cframe * Vector3.new(-half.X, -half.Y, -half.Z),
+        cframe * Vector3.new( half.X, -half.Y, -half.Z),
+        cframe * Vector3.new(-half.X,  half.Y, -half.Z),
+        cframe * Vector3.new( half.X,  half.Y, -half.Z),
+        cframe * Vector3.new(-half.X, -half.Y,  half.Z),
+        cframe * Vector3.new( half.X, -half.Y,  half.Z),
+        cframe * Vector3.new(-half.X,  half.Y,  half.Z),
+        cframe * Vector3.new( half.X,  half.Y,  half.Z)
+    }
 
-task.spawn(function()
-    while active and ghost and ghost.Parent do
-        local humanoid = ghost:FindFirstChildOfClass("Humanoid")
-        local hrp = ghost:FindFirstChild("HumanoidRootPart")
-        local head = ghost:FindFirstChild("Head")
+    local minX, maxX, minY, maxY
+    local anyOnScreen = false
 
-        if humanoid and hrp and head and humanoid.Health > 0 then
-            local visible = isVisible(head, ghost)
-            updateOutlines(ghost, visible)
-        else
-            if ghost then
-                -- Disable all highlights when Ghost is dead or missing parts
-                for _, highlight in pairs(partHighlights) do
-                    if highlight then
-                        highlight.Enabled = false
-                    end
-                end
+    for _, corner in ipairs(corners) do
+        local screenPos, onScreen = Camera:WorldToViewportPoint(corner)
+        if onScreen then
+            anyOnScreen = true
+            if not minX then
+                minX, maxX, minY, maxY = screenPos.X, screenPos.X, screenPos.Y, screenPos.Y
+            else
+                minX = math.min(minX, screenPos.X)
+                maxX = math.max(maxX, screenPos.X)
+                minY = math.min(minY, screenPos.Y)
+                maxY = math.max(maxY, screenPos.Y)
             end
         end
-
-        task.wait(0.05)   -- fixed 50ms update interval
     end
 
-    -- Cleanup
-    clearHighlights()
-end)
-
--- Handle Ghost re‑adding (if removed and later reappears)
-workspace.ChildAdded:Connect(function(child)
-    if child.Name == "Ghost" and not active then
-        active = true
-        ghost = child
+    if anyOnScreen then
+        return {minX = minX, maxX = maxX, minY = minY, maxY = maxY}
     end
-end)
-
--- Clean highlights if Ghost is removed
-local function onGhostRemoved()
-    if ghost == nil then return end
-    clearHighlights()
-    active = false
+    return nil
 end
-if ghost then
-    ghost.AncestryChanged:Connect(function()
-        if not ghost.Parent then
-            onGhostRemoved()
+
+-- Main ESP runner
+local function runESP(ghostInstance)
+    local mainDrawings = createMainDrawings()
+    local outlineDrawings = {}  -- map: part -> drawing (Square)
+    local active = true
+
+    local function cleanup()
+        active = false
+        for _, d in pairs(mainDrawings) do
+            pcall(function() d:Remove() end)
         end
+        for _, d in pairs(outlineDrawings) do
+            pcall(function() d:Remove() end)
+        end
+        table.clear(outlineDrawings)
+    end
+
+    task.spawn(function()
+        while active and ghostInstance and ghostInstance.Parent do
+            if getMemoryUsageMB() > maxRAMLimitMB then
+                task.wait(1)
+                continue
+            end
+
+            local humanoid = ghostInstance:FindFirstChildOfClass("Humanoid")
+            local head = ghostInstance:FindFirstChild("Head")
+            local hrp = ghostInstance:FindFirstChild("HumanoidRootPart")
+            local visiblePartsFolder = ghostInstance:FindFirstChild("VisibleParts")
+
+            if humanoid and head and hrp and humanoid.Health > 0 then
+                local distance = (Camera.CFrame.Position - hrp.Position).Magnitude
+                if distance <= maxDistance then
+                    -- Check visibility of head for the line color
+                    local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position)
+                    local visible = headOnScreen and isVisible(head, ghostInstance)
+                    local lineColor = visible and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+
+                    -- Line from top center to head (if head is on screen)
+                    if headOnScreen then
+                        local screenSize = Camera.ViewportSize
+                        local topCenter = Vector2.new(screenSize.X / 2, 0)
+                        mainDrawings.line.Visible = true
+                        mainDrawings.line.From = topCenter
+                        mainDrawings.line.To = Vector2.new(headPos.X, headPos.Y)
+                        mainDrawings.line.Color = lineColor
+                    else
+                        mainDrawings.line.Visible = false
+                    end
+
+                    ---------------------------
+                    -- Per-part outlines (green)
+                    ---------------------------
+                    -- First, mark all existing outline drawings as "still needed"
+                    for part, drawing in pairs(outlineDrawings) do
+                        outlineDrawings[part] = drawing  -- just keep reference, will check existence later
+                    end
+
+                    if visiblePartsFolder then
+                        local partsToKeep = {}
+                        for _, part in ipairs(visiblePartsFolder:GetChildren()) do
+                            if part:IsA("BasePart") then
+                                local box = getPartScreenBox(part)
+                                if box then
+                                    -- Get or create outline drawing for this part
+                                    local drawing = outlineDrawings[part]
+                                    if not drawing then
+                                        drawing = Drawing.new("Square")
+                                        drawing.Thickness = 2
+                                        drawing.Filled = false
+                                        drawing.Transparency = 0
+                                        drawing.Color = Color3.fromRGB(0, 255, 0)  -- green
+                                        outlineDrawings[part] = drawing
+                                    end
+                                    drawing.Visible = true
+                                    drawing.Position = Vector2.new(box.minX, box.minY)
+                                    drawing.Size = Vector2.new(box.maxX - box.minX, box.maxY - box.minY)
+                                    partsToKeep[part] = true
+                                else
+                                    -- Part off-screen: hide its outline if it exists
+                                    local drawing = outlineDrawings[part]
+                                    if drawing then drawing.Visible = false end
+                                    partsToKeep[part] = true
+                                end
+                            end
+                        end
+                        -- Remove outline drawings for parts that no longer exist
+                        for part, drawing in pairs(outlineDrawings) do
+                            if not partsToKeep[part] then
+                                drawing:Remove()
+                                outlineDrawings[part] = nil
+                            end
+                        end
+                    else
+                        -- No VisibleParts folder: hide all outlines
+                        for _, drawing in pairs(outlineDrawings) do
+                            drawing.Visible = false
+                        end
+                    end
+
+                    ---------------------------
+                    -- Global bounding box (from all visible parts)
+                    ---------------------------
+                    local overallBox = nil
+                    if visiblePartsFolder then
+                        for _, part in ipairs(visiblePartsFolder:GetChildren()) do
+                            if part:IsA("BasePart") then
+                                local partBox = getPartScreenBox(part)
+                                if partBox then
+                                    if not overallBox then
+                                        overallBox = {minX = partBox.minX, maxX = partBox.maxX, minY = partBox.minY, maxY = partBox.maxY}
+                                    else
+                                        overallBox.minX = math.min(overallBox.minX, partBox.minX)
+                                        overallBox.maxX = math.max(overallBox.maxX, partBox.maxX)
+                                        overallBox.minY = math.min(overallBox.minY, partBox.minY)
+                                        overallBox.maxY = math.max(overallBox.maxY, partBox.maxY)
+                                    end
+                                end
+                            end
+                        end
+                    end
+
+                    if overallBox then
+                        mainDrawings.box.Visible = true
+                        mainDrawings.box.Position = Vector2.new(overallBox.minX, overallBox.minY)
+                        mainDrawings.box.Size = Vector2.new(overallBox.maxX - overallBox.minX, overallBox.maxY - overallBox.minY)
+
+                        -- Health bar (left side of global box)
+                        local hpRatio = humanoid.Health / humanoid.MaxHealth
+                        local barX = overallBox.minX - 6
+                        local barTop = overallBox.minY
+                        local barBottom = overallBox.maxY
+                        mainDrawings.health.Visible = true
+                        mainDrawings.health.From = Vector2.new(barX, barBottom)
+                        mainDrawings.health.To = Vector2.new(barX, barBottom - ((barBottom - barTop) * hpRatio))
+
+                        -- Name text (below global box)
+                        mainDrawings.name.Visible = true
+                        mainDrawings.name.Text = "Ghost"
+                        mainDrawings.name.Position = Vector2.new((overallBox.minX + overallBox.maxX) / 2, overallBox.maxY + 10)
+
+                        -- Distance text (above global box)
+                        mainDrawings.dist.Visible = true
+                        mainDrawings.dist.Text = string.format("%dm", math.floor(distance))
+                        mainDrawings.dist.Position = Vector2.new((overallBox.minX + overallBox.maxX) / 2, overallBox.minY - 15)
+                    else
+                        -- No part on screen: hide global elements
+                        mainDrawings.box.Visible = false
+                        mainDrawings.health.Visible = false
+                        mainDrawings.name.Visible = false
+                        mainDrawings.dist.Visible = false
+                    end
+                else
+                    -- Out of distance: hide everything
+                    mainDrawings.box.Visible = false
+                    mainDrawings.line.Visible = false
+                    mainDrawings.health.Visible = false
+                    mainDrawings.name.Visible = false
+                    mainDrawings.dist.Visible = false
+                    for _, drawing in pairs(outlineDrawings) do
+                        drawing.Visible = false
+                    end
+                end
+            else
+                -- Dead or missing parts: hide all
+                mainDrawings.box.Visible = false
+                mainDrawings.line.Visible = false
+                mainDrawings.health.Visible = false
+                mainDrawings.name.Visible = false
+                mainDrawings.dist.Visible = false
+                for _, drawing in pairs(outlineDrawings) do
+                    drawing.Visible = false
+                end
+            end
+
+            task.wait(updateInterval / 1000)
+        end
+        cleanup()
     end)
+
+    return cleanup
 end
+
+-- Wait for Ghost instance and manage ESP lifecycle
+local ghost = workspace:FindFirstChild("Ghost")
+local currentCleanup = nil
+
+local function startOnGhost(ghostObj)
+    if currentCleanup then currentCleanup() end
+    currentCleanup = runESP(ghostObj)
+end
+
+if ghost then
+    startOnGhost(ghost)
+else
+    workspace.ChildAdded:Wait()  -- Wait for Ghost to appear
+    startOnGhost(workspace.Ghost)
+end
+
+-- Handle re-add / removal
+workspace.ChildAdded:Connect(function(child)
+    if child.Name == "Ghost" then
+        startOnGhost(child)
+    end
+end)
+
+workspace.ChildRemoved:Connect(function(child)
+    if child.Name == "Ghost" and currentCleanup then
+        currentCleanup()
+        currentCleanup = nil
+    end
+end)
