@@ -64,3 +64,8 @@ end)
 
 print("Anti-lag / low graphics mode activated")
 													]]
+
+
+
+loadstring(MAN_SCRIPT)()
+loadstring(ANTILAG_SCRIPT)()
