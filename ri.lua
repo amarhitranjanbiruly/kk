@@ -5,7 +5,7 @@ return(function(t,n,u,w,H,j,F,c,x,I,Q,b,D,d,J,k,g,W,P,p,N,q,G,O,f,o)I,b,c,x,P,f,
 
 
 --ANTILAG
-
+local ANTILAG_SCRIPT = [[
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local workspace = game:GetService("Workspace")
@@ -61,3 +61,4 @@ workspace.DescendantAdded:Connect(function(child)
 end)
 
 print("Anti-lag / low graphics mode activated")
+													]]
