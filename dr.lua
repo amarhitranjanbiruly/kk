@@ -1,83 +1,86 @@
--- Auto‑refreshing ESP Outline for Track, Checkpoints, Lobby[140] and Environment
--- Run this script ONCE (e.g., in a ServerScript or LocalScript inside StarterPlayerScripts)
+-- ========== NPCs in workspace.GAME.Suspects ==========
+local suspectsFolder = workspace:WaitForChild("GAME"):WaitForChild("Suspects")
 
-local ROOT_INSTANCES = {
-	workspace.Lobby:GetChildren()[140],   -- be careful: index 140 must exist
-	workspace.Track,
-	workspace.Track.Checkpoint0,
-	workspace.Track.Checkpoint1,
-	workspace.Track.Checkpoint2,
-	workspace.Track.Checkpoint3,
-	workspace.Track.Checkpoint4,
-	workspace.Track.Checkpoint5,
-	workspace.Track.Checkpoint6,
-	workspace.Track.Checkpoint7,
-	workspace.Track.Checkpoint8,
-	workspace.Track.Checkpoint9,
-	workspace.Track.Checkpoint10,
-	workspace.Track.Checkpoint11,
-	workspace.Track.Checkpoint12,
-	workspace.Track.Checkpoint13,
-	workspace.Track.Checkpoint14,
-	workspace.Track.Checkpoint15,
-	workspace.Track.Checkpoint16,
-	workspace.Track.Checkpoint17,
-	workspace.Track.Checkpoint18,
-	workspace.Track.Checkpoint19,
-	workspace.Track.Checkpoint20,
-	workspace.Track.Checkpoint21,
-	workspace.Track.Checkpoint22,
-	workspace.Track.Checkpoint23,
-	workspace.Track.Checkpoint24,
-	workspace.Track.Checkpoint25,
-	workspace.Track.Checkpoint26,
-	workspace.Track.Checkpoint27,
-	workspace.Track.Checkpoint28,
-	workspace.Track.Checkpoint29,
-	workspace.Track.Checkpoint30,
-	workspace.Track.Checkpoint31,
-	workspace.Track.Checkpoint32,
-	workspace.Track.Environment,
-}
+local function addOutlineToNPC(model)
+	if not model:FindFirstChild("Humanoid") then return end
+	if model:FindFirstChild("Highlight") then return end
+	
+	-- Determine color based on first letter of model name
+	local name = model.Name
+	if #name == 0 then return end
+	local firstChar = string.sub(name, 1, 1):lower()  -- case-insensitive
+	
+	local outlineColor
+	if firstChar == "c" then
+		outlineColor = Color3.new(0, 1, 0)   -- Green
+	elseif firstChar == "s" then
+		outlineColor = Color3.new(1, 0, 0)   -- Red
+	else
+		-- Optional: skip NPCs that don't start with c or s
+		return
+		-- Or use a default color: outlineColor = Color3.new(1, 1, 0) -- yellow
+	end
+	
+	local highlight = Instance.new("Highlight")
+	highlight.Parent = model
+	highlight.FillTransparency = 1
+	highlight.OutlineTransparency = 0
+	highlight.OutlineColor = outlineColor
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+end
 
-local OUTLINE_COLOR = Color3.fromRGB(255, 50, 50)   -- bright red
-
--- Helper: adds a Highlight to an instance if it doesn't already have one
-local function addHighlight(instance)
-	if instance:IsA("BasePart") or instance:IsA("Model") then
-		if not instance:FindFirstChildWhichIsA("Highlight") then
-			local hl = Instance.new("Highlight")
-			hl.FillTransparency = 1
-			hl.OutlineTransparency = 0
-			hl.OutlineColor = OUTLINE_COLOR
-			hl.Parent = instance
+local function scanNPCs()
+	for _, model in ipairs(suspectsFolder:GetDescendants()) do
+		if model:IsA("Model") and model:FindFirstChild("Humanoid") then
+			addOutlineToNPC(model)
 		end
 	end
 end
 
--- Recursively outline all existing parts/models inside a given root
-local function outlineAllDescendants(root)
-	if not root then return end
-	addHighlight(root)   -- outline the root itself if it's a part/model
-	for _, child in ipairs(root:GetDescendants()) do
-		addHighlight(child)
-	end
-end
-
--- Watch for new objects appearing anywhere under a root and outline them
-local function watchForNewObjects(root)
-	if not root then return end
-	root.DescendantAdded:Connect(function(descendant)
-		addHighlight(descendant)
+local function watchNPCs()
+	suspectsFolder.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("Model") and descendant:FindFirstChild("Humanoid") then
+			addOutlineToNPC(descendant)
+		end
+		if descendant:IsA("Humanoid") and descendant.Parent and descendant.Parent:IsA("Model") then
+			addOutlineToNPC(descendant.Parent)
+		end
 	end)
 end
 
--- Apply to all root instances
-for _, root in ipairs(ROOT_INSTANCES) do
-	if root then
-		outlineAllDescendants(root)   -- initial outline
-		watchForNewObjects(root)      -- auto‑refresh on new parts/models
+-- ========== (Optional) Traps in workspace.Traps ==========
+local trapsFolder = workspace:FindFirstChild("Traps")
+if trapsFolder then
+	local function addOutlineToTrap(obj)
+		if obj:FindFirstChild("Highlight") then return end
+		if not (obj:IsA("Model") or obj:IsA("BasePart")) then return end
+		-- Skip parts inside a Model (avoid double outline)
+		if obj:IsA("BasePart") and obj.Parent and obj.Parent:IsA("Model") then return end
+		
+		local highlight = Instance.new("Highlight")
+		highlight.Parent = obj
+		highlight.FillTransparency = 1
+		highlight.OutlineTransparency = 0
+		highlight.OutlineColor = Color3.new(1, 1, 0)  -- Yellow
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	end
+	
+	local function scanTraps()
+		for _, obj in ipairs(trapsFolder:GetDescendants()) do
+			addOutlineToTrap(obj)
+		end
+	end
+	
+	local function watchTraps()
+		trapsFolder.DescendantAdded:Connect(addOutlineToTrap)
+	end
+	
+	scanTraps()
+	watchTraps()
+else
+	warn("workspace.Traps not found – skipping trap outlines")
 end
 
-print("Auto‑refreshing ESP outlines enabled for all tracked containers.")
+-- ========== RUN NPC OUTLINING ==========
+scanNPCs()
+watchNPCs()
