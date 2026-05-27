@@ -11,7 +11,7 @@
         "username": "champi",
         "password": "champi",
         "expirydate": "12-6-2028",
-        "Allowoffline": true
+        "Allowoffline":false
     },
     {
         "device_id": "a8c164e519905467",
