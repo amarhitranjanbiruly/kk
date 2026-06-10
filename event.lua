@@ -238,7 +238,7 @@ end
 -- Auto‑refresh timer (every 5 minutes = 300 seconds)
 task.spawn(function()
     while true do
-        task.wait(5)  -- 5 minutes
+        task.wait(1)  -- 5 minutes
         if espEnabled then
             fullRefresh()
         end
