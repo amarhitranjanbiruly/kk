@@ -1,176 +1,325 @@
--- ESP: Full chams outline + name (blue) + distance (green)
--- Works for all players, including those who join later
+-- ESP: Green 2D box + (Red chams outline OR Skeleton) + Blue name + Green distance
+-- Uses workspace.Game.Players[player.Name] for character access
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
-
 local LocalPlayer = Players.LocalPlayer
-local playerData = {} -- { highlight, nameText, distText }
 
--- Apply Highlight (full outline) to a character
-local function applyHighlight(character, player)
-    local data = playerData[player]
-    if data and data.highlight then
-        data.highlight:Destroy()
-    end
-    
-    local hl = Instance.new("Highlight")
-    hl.Parent = character
-    hl.FillTransparency = 1          -- no fill, only outline
-    hl.OutlineTransparency = 0
-    hl.OutlineColor = Color3.fromRGB(255, 100, 100) -- red outline (change as desired)
-    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    
-    if not playerData[player] then
-        playerData[player] = {}
-    end
-    playerData[player].highlight = hl
+local playerData = {} -- { box, nameText, distText, highlight, skeletonLines, useSkeleton }
+
+-- Helper: get character model from custom path
+local function getCharacter(player)
+    local gameFolder = workspace.Game
+    if not gameFolder then return nil end
+    local playersFolder = gameFolder.Players
+    if not playersFolder then return nil end
+    return playersFolder:FindFirstChild(player.Name)
 end
 
--- Create text objects (blue name, green distance) for a player
-local function addESP(player)
-    if player == LocalPlayer then return end
-    
-    -- Don't create twice
-    if playerData[player] then return end
-    
+-- Try to attach red chams outline (Highlight)
+local function attachHighlight(player, model)
+    if not model then return nil end
+    local data = playerData[player]
+    if not data then return nil end
+    if data.highlight then
+        data.highlight:Destroy()
+        data.highlight = nil
+    end
+    local success, hl = pcall(function()
+        local h = Instance.new("Highlight")
+        h.Parent = model
+        h.FillTransparency = 1
+        h.OutlineTransparency = 0
+        h.OutlineColor = Color3.fromRGB(255, 0, 0) -- red
+        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        return h
+    end)
+    if success and hl then
+        data.highlight = hl
+        return true
+    else
+        return false
+    end
+end
+
+-- Create skeleton lines (if Highlight fails)
+local function createSkeleton(player, model)
+    local data = playerData[player]
+    if not data then return end
+    -- Destroy old skeleton lines
+    if data.skeletonLines then
+        for _, line in ipairs(data.skeletonLines) do
+            line:Remove()
+        end
+    end
+    data.skeletonLines = {}
+    -- We'll create lines on the fly in update loop, but pre-allocate line objects
+    for i = 1, 12 do -- max joints pairs
+        local line = Drawing.new("Line")
+        line.Thickness = 1
+        line.Color = Color3.fromRGB(255, 0, 0) -- red skeleton
+        line.Visible = false
+        table.insert(data.skeletonLines, line)
+    end
+end
+
+-- Update skeleton positions (draw 2D lines between joints)
+local function updateSkeleton(player, model, data)
+    if not model or not data.skeletonLines then return end
+    -- Define joint names and connections (from, to)
+    local joints = {
+        { "Head", "UpperTorso" },
+        { "UpperTorso", "HumanoidRootPart" },
+        { "HumanoidRootPart", "LowerTorso" },
+        { "LeftUpperArm", "LeftLowerArm" },
+        { "LeftLowerArm", "LeftHand" },
+        { "RightUpperArm", "RightLowerArm" },
+        { "RightLowerArm", "RightHand" },
+        { "LeftUpperLeg", "LeftLowerLeg" },
+        { "LeftLowerLeg", "LeftFoot" },
+        { "RightUpperLeg", "RightLowerLeg" },
+        { "RightLowerLeg", "RightFoot" },
+        { "UpperTorso", "LeftUpperArm" },
+        { "UpperTorso", "RightUpperArm" },
+        { "LowerTorso", "LeftUpperLeg" },
+        { "LowerTorso", "RightUpperLeg" },
+    }
+    local lineIndex = 1
+    for _, conn in ipairs(joints) do
+        local partA = model:FindFirstChild(conn[1])
+        local partB = model:FindFirstChild(conn[2])
+        if partA and partB then
+            local posA, onScreenA = Camera:WorldToViewportPoint(partA.Position)
+            local posB, onScreenB = Camera:WorldToViewportPoint(partB.Position)
+            if onScreenA and onScreenB and lineIndex <= #data.skeletonLines then
+                local line = data.skeletonLines[lineIndex]
+                line.From = Vector2.new(posA.X, posA.Y)
+                line.To = Vector2.new(posB.X, posB.Y)
+                line.Visible = true
+                lineIndex = lineIndex + 1
+            end
+        end
+    end
+    -- Hide unused lines
+    for i = lineIndex, #data.skeletonLines do
+        data.skeletonLines[i].Visible = false
+    end
+end
+
+-- Clean skeleton lines
+local function clearSkeleton(data)
+    if data.skeletonLines then
+        for _, line in ipairs(data.skeletonLines) do
+            line:Remove()
+        end
+        data.skeletonLines = nil
+    end
+end
+
+-- Create 2D drawing objects (green box, blue name, green distance)
+local function createDrawings(player)
+    if player == LocalPlayer then return nil end
+    local box = Drawing.new("Square")
+    box.Thickness = 1
+    box.Color = Color3.fromRGB(0, 255, 0) -- green box
+    box.Transparency = 1
+    box.Filled = false
+    box.Visible = true
+    box.ZIndex = 1
+
     local nameText = Drawing.new("Text")
-    nameText.Color = Color3.fromRGB(0, 150, 255)  -- blue
+    nameText.Color = Color3.fromRGB(0, 150, 255) -- blue name
     nameText.Size = 14
     nameText.Center = true
     nameText.Outline = true
     nameText.OutlineColor = Color3.fromRGB(0, 0, 0)
     nameText.Visible = true
     nameText.ZIndex = 1
-    
+
     local distText = Drawing.new("Text")
-    distText.Color = Color3.fromRGB(0, 255, 0)    -- green
+    distText.Color = Color3.fromRGB(0, 255, 0) -- green distance
     distText.Size = 14
     distText.Center = false
     distText.Outline = true
     distText.OutlineColor = Color3.fromRGB(0, 0, 0)
     distText.Visible = true
     distText.ZIndex = 1
-    
-    playerData[player] = {
-        nameText = nameText,
-        distText = distText,
-        highlight = nil
-    }
-    
-    -- If character already exists, apply highlight immediately
-    local character = player.Character
-    if character and character:FindFirstChild("HumanoidRootPart") then
-        applyHighlight(character, player)
-    end
+
+    return { box = box, nameText = nameText, distText = distText }
 end
 
--- Clean up when a player leaves
-local function removeESP(player)
+-- Add a player to ESP
+local function addPlayer(player)
+    if player == LocalPlayer or playerData[player] then return end
+    local drawings = createDrawings(player)
+    if not drawings then return end
+    playerData[player] = {
+        box = drawings.box,
+        nameText = drawings.nameText,
+        distText = drawings.distText,
+        highlight = nil,
+        skeletonLines = nil,
+        useSkeleton = false
+    }
+    -- Delay to let character load
+    task.spawn(function()
+        task.wait(0.3)
+        local model = getCharacter(player)
+        if not model then return end
+        -- Try to attach Highlight, if fails then use skeleton
+        local hlSuccess = attachHighlight(player, model)
+        if not hlSuccess then
+            -- Fallback to skeleton
+            local data = playerData[player]
+            if data then
+                data.useSkeleton = true
+                createSkeleton(player, model)
+            end
+        end
+    end)
+end
+
+-- Remove player
+local function removePlayer(player)
     local data = playerData[player]
     if data then
+        if data.box then data.box:Remove() end
         if data.nameText then data.nameText:Remove() end
         if data.distText then data.distText:Remove() end
         if data.highlight then data.highlight:Destroy() end
+        clearSkeleton(data)
         playerData[player] = nil
     end
 end
 
--- Called when a player's character appears (initial spawn or respawn)
-local function onCharacterAdded(player, character)
-    local data = playerData[player]
-    if not data then return end  -- No ESP for this player (shouldn't happen)
-    
-    -- Small delay to ensure HumanoidRootPart exists
-    task.wait(0.1)
-    if character and character:FindFirstChild("HumanoidRootPart") then
-        applyHighlight(character, player)
-    end
-end
-
--- Update text positions and distances every frame
+-- Update ESP every frame
 local function updateESP()
     for player, data in pairs(playerData) do
-        local character = player.Character
-        local hrp = character and character:FindFirstChild("HumanoidRootPart")
-        local humanoid = character and character:FindFirstChild("Humanoid")
+        local model = getCharacter(player)
+        local hrp = model and model:FindFirstChild("HumanoidRootPart")
+        local humanoid = model and model:FindFirstChild("Humanoid")
         
         if hrp and humanoid and humanoid.Health > 0 then
-            -- Re-apply highlight if missing (e.g., after respawn)
-            if not data.highlight or data.highlight.Parent ~= character then
-                applyHighlight(character, player)
+            -- Ensure highlight or skeleton is active
+            if not data.highlight and not data.useSkeleton then
+                -- Try Highlight again (maybe character respawned)
+                local success = attachHighlight(player, model)
+                if not success then
+                    data.useSkeleton = true
+                    createSkeleton(player, model)
+                end
+            elseif data.highlight and data.highlight.Parent ~= model then
+                -- Re-attach highlight if model changed
+                attachHighlight(player, model)
             end
             
-            local head = character:FindFirstChild("Head")
-            local headPos = (head or hrp).Position + Vector3.new(0, 2.5, 0)
-            local screenPos, onScreen = Camera:WorldToViewportPoint(headPos)
+            -- If using skeleton, update its lines
+            if data.useSkeleton and data.skeletonLines then
+                updateSkeleton(player, model, data)
+            end
             
-            if onScreen then
-                -- Distance from local player
-                local distance = nil
-                local localChar = LocalPlayer.Character
-                if localChar and localChar:FindFirstChild("HumanoidRootPart") then
-                    local localPos = localChar.HumanoidRootPart.Position
-                    distance = (hrp.Position - localPos).Magnitude
-                end
+            -- 2D green bounding box and text
+            local pos = hrp.Position
+            -- Distance from local player
+            local distance = nil
+            local localChar = LocalPlayer.Character
+            local localHrp = localChar and localChar:FindFirstChild("HumanoidRootPart")
+            if localHrp then
+                distance = (pos - localHrp.Position).Magnitude
+            end
+            
+            -- Feet and head screen positions
+            local footPos, footOn = Camera:WorldToViewportPoint(pos - Vector3.new(0, 3, 0))
+            local headPos, headOn = Camera:WorldToViewportPoint(pos + Vector3.new(0, 2.5, 0))
+            
+            if footOn and headOn then
+                local height = footPos.Y - headPos.Y
+                local width = height * 0.8
+                local left = headPos.X - width / 2
+                local top = headPos.Y
+                data.box.Size = Vector2.new(width, height)
+                data.box.Position = Vector2.new(left, top)
+                data.box.Visible = true
                 
-                -- Name (blue)
+                -- Blue name
                 data.nameText.Text = player.Name
-                data.nameText.Position = Vector2.new(screenPos.X - 35, screenPos.Y - 20)
-                
-                -- Distance (green)
-                local distString = distance and string.format("%.1f", distance) or "?"
-                data.distText.Text = " [" .. distString .. "]"
-                data.distText.Position = Vector2.new(screenPos.X + (data.nameText.TextBounds.X / 2) - 10, screenPos.Y - 20)
-                
+                data.nameText.Position = Vector2.new(headPos.X, top - 20)
                 data.nameText.Visible = true
+                
+                -- Green distance (placed after name)
+                local distString = distance and string.format("  [%.1f]", distance) or "  [?]"
+                data.distText.Text = distString
+                data.distText.Position = Vector2.new(headPos.X + (data.nameText.TextBounds.X / 2), top - 20)
                 data.distText.Visible = true
             else
+                data.box.Visible = false
                 data.nameText.Visible = false
                 data.distText.Visible = false
             end
         else
+            -- Character dead or missing
+            data.box.Visible = false
             data.nameText.Visible = false
             data.distText.Visible = false
-            -- Remove highlight if character is dead or gone
             if data.highlight then
                 data.highlight:Destroy()
                 data.highlight = nil
+            end
+            if data.skeletonLines then
+                for _, line in ipairs(data.skeletonLines) do
+                    line.Visible = false
+                end
             end
         end
     end
 end
 
--- ========== SETUP FOR EXISTING AND NEW PLAYERS ==========
--- Handle existing players
+-- ========== SETUP ==========
+-- Existing players
 for _, player in ipairs(Players:GetPlayers()) do
-    addESP(player)
-    player.CharacterAdded:Connect(function(character)
-        onCharacterAdded(player, character)
+    addPlayer(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(0.3)
+        local model = getCharacter(player)
+        if model and playerData[player] then
+            if not attachHighlight(player, model) then
+                playerData[player].useSkeleton = true
+                createSkeleton(player, model)
+            end
+        end
     end)
 end
 
--- Handle future players (CRITICAL: call addESP first!)
+-- New players
 Players.PlayerAdded:Connect(function(player)
-    addESP(player)  -- <-- This was missing before
-    player.CharacterAdded:Connect(function(character)
-        onCharacterAdded(player, character)
+    addPlayer(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(0.3)
+        local model = getCharacter(player)
+        if model and playerData[player] then
+            if not attachHighlight(player, model) then
+                playerData[player].useSkeleton = true
+                createSkeleton(player, model)
+            end
+        end
     end)
 end)
 
--- Handle players leaving
-Players.PlayerRemoving:Connect(removeESP)
+-- Player leaves
+Players.PlayerRemoving:Connect(removePlayer)
 
--- Start the render loop
+-- Start render loop
 RunService.RenderStepped:Connect(updateESP)
 
--- Optional: full cleanup if script is re-run (for exploit environments)
+-- Cleanup on script end
 local function fullClean()
     for player, data in pairs(playerData) do
+        if data.box then data.box:Remove() end
         if data.nameText then data.nameText:Remove() end
         if data.distText then data.distText:Remove() end
         if data.highlight then data.highlight:Destroy() end
+        clearSkeleton(data)
     end
     playerData = {}
 end
