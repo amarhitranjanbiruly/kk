@@ -1,6 +1,7 @@
 -- ESP: Green 2D box + Blue name + Green distance
 -- Outline (chams/skeleton): Green = alive, Red = dead
--- Death check toggle: true = hide dead, false = show dead with red outline
+-- Death check toggle (checkDeath): true = hide dead, false = show dead with red outline
+-- Auto‑detects new players, respawns, health changes
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,10 +9,10 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 local espEnabled = true       -- Master ESP on/off
-local checkDeath = false       -- true = hide dead, false = show dead (with red outline)
-local playerData = {}
+local checkDeath = true       -- true = hide dead, false = show dead (with red outline)
+local playerData = {}         -- Stores all drawing objects and state per player
 
--- Get character from custom path
+-- Helper: get character model from custom path
 local function getCharacter(player)
     local gameFolder = workspace.Game
     if not gameFolder then return nil end
@@ -46,7 +47,7 @@ local function attachHighlight(player, model, color)
     end
 end
 
--- Create skeleton lines (fallback)
+-- Create skeleton lines (fallback) – color will be updated per frame
 local function createSkeleton(player, model)
     local data = playerData[player]
     if not data then return end
@@ -59,7 +60,7 @@ local function createSkeleton(player, model)
     for i = 1, 15 do
         local line = Drawing.new("Line")
         line.Thickness = 1
-        line.Color = Color3.fromRGB(0, 255, 0)  -- default green, will update per frame
+        line.Color = Color3.fromRGB(0, 255, 0)  -- temp, will be updated
         line.Visible = false
         table.insert(data.skeletonLines, line)
     end
@@ -144,7 +145,7 @@ local function createDrawings(player)
     return { box = box, nameText = nameText, distText = distText }
 end
 
--- Add player to ESP
+-- Add a player to ESP (called for new players and initially)
 local function addPlayer(player)
     if player == LocalPlayer or playerData[player] then return end
     local drawings = createDrawings(player)
@@ -155,24 +156,25 @@ local function addPlayer(player)
         distText = drawings.distText,
         highlight = nil,
         skeletonLines = nil,
-        useSkeleton = false
+        useSkeleton = false,
+        lastHealth = nil,      -- to detect health changes
+        lastModel = nil        -- to detect respawn
     }
+    -- Initial attempt to attach highlight (won't block if model not yet ready)
     task.spawn(function()
         task.wait(0.3)
         local model = getCharacter(player)
-        if not model then return end
-        local success = attachHighlight(player, model, Color3.fromRGB(0, 255, 0)) -- initial green
-        if not success then
-            local data = playerData[player]
-            if data then
-                data.useSkeleton = true
+        if model and playerData[player] then
+            if not attachHighlight(player, model, Color3.fromRGB(0, 255, 0)) then
+                playerData[player].useSkeleton = true
                 createSkeleton(player, model)
             end
+            playerData[player].lastModel = model
         end
     end)
 end
 
--- Remove player
+-- Remove player (cleanup)
 local function removePlayer(player)
     local data = playerData[player]
     if data then
@@ -185,44 +187,23 @@ local function removePlayer(player)
     end
 end
 
--- Hide all ESP for a player
-local function hidePlayerESP(player)
-    local data = playerData[player]
-    if data then
-        if data.box then data.box.Visible = false end
-        if data.nameText then data.nameText.Visible = false end
-        if data.distText then data.distText.Visible = false end
-        if data.highlight then data.highlight.Visible = false end
-        if data.skeletonLines then
-            for _, line in ipairs(data.skeletonLines) do
-                line.Visible = false
-            end
-        end
-    end
-end
-
--- Show all ESP for a player
-local function showPlayerESP(player)
-    local data = playerData[player]
-    if data then
-        if data.box then data.box.Visible = true end
-        if data.nameText then data.nameText.Visible = true end
-        if data.distText then data.distText.Visible = true end
-        if data.highlight then data.highlight.Visible = true end
-    end
-end
-
 -- Master toggle
 local function setESPEnabled(enabled)
     espEnabled = enabled
     if not espEnabled then
         for player, data in pairs(playerData) do
-            hidePlayerESP(player)
+            if data.box then data.box.Visible = false end
+            if data.nameText then data.nameText.Visible = false end
+            if data.distText then data.distText.Visible = false end
+            if data.highlight then data.highlight.Visible = false end
+            if data.skeletonLines then
+                for _, line in ipairs(data.skeletonLines) do
+                    line.Visible = false
+                end
+            end
         end
     else
-        for player, data in pairs(playerData) do
-            showPlayerESP(player)
-        end
+        -- Visibility will be restored in the update loop
     end
 end
 
@@ -231,32 +212,61 @@ local function setDeathCheck(enabled)
     checkDeath = enabled
 end
 
--- Update loop (handles color based on health)
+-- Main update loop – runs every frame, auto‑refreshes everything
 local function updateESP()
-    if not espEnabled then return end
+    if not espEnabled then
+        -- Ensure everything is hidden
+        for player, data in pairs(playerData) do
+            if data.box then data.box.Visible = false end
+            if data.nameText then data.nameText.Visible = false end
+            if data.distText then data.distText.Visible = false end
+            if data.highlight then data.highlight.Visible = false end
+            if data.skeletonLines then
+                for _, line in ipairs(data.skeletonLines) do
+                    line.Visible = false
+                end
+            end
+        end
+        return
+    end
     
     for player, data in pairs(playerData) do
         local model = getCharacter(player)
         local hrp = model and model:FindFirstChild("HumanoidRootPart")
         local humanoid = model and model:FindFirstChild("Humanoid")
+        local currentHealth = humanoid and humanoid.Health or 0
+        local isAlive = (hrp and humanoid and currentHealth > 0)
         
-        -- Determine alive status and visibility
-        local isAlive = (hrp and humanoid and humanoid.Health > 0)
+        -- Check if model changed (respawn) or health changed
+        local modelChanged = (model ~= data.lastModel)
+        local healthChanged = (currentHealth ~= data.lastHealth)
+        if modelChanged or healthChanged then
+            data.lastModel = model
+            data.lastHealth = currentHealth
+            -- If model changed, we may need to recreate highlight/skeleton
+            if data.highlight then
+                data.highlight:Destroy()
+                data.highlight = nil
+            end
+            if data.skeletonLines then
+                clearSkeleton(data)
+                data.useSkeleton = false
+            end
+        end
+        
+        -- Determine if we should show this player based on checkDeath
         local shouldShow = false
-        
         if checkDeath then
-            -- Only show if alive
             shouldShow = isAlive
         else
-            -- Show if character exists (dead or alive)
             shouldShow = (hrp ~= nil)
         end
         
         if shouldShow and hrp then
-            -- Choose outline color based on health (green alive, red dead)
+            -- Choose outline color (green alive, red dead)
             local outlineColor = isAlive and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
             
-            -- Handle Highlight or skeleton
+            -- Ensure we have either Highlight or skeleton
             if not data.highlight and not data.useSkeleton then
                 local success = attachHighlight(player, model, outlineColor)
                 if not success then
@@ -266,7 +276,6 @@ local function updateESP()
             elseif data.highlight then
                 -- Update highlight color if needed
                 if data.highlight.OutlineColor ~= outlineColor then
-                    data.highlight:Destroy()
                     attachHighlight(player, model, outlineColor)
                 end
                 if data.highlight.Parent ~= model then
@@ -313,7 +322,7 @@ local function updateESP()
                 data.distText.Visible = false
             end
         else
-            -- Hide everything
+            -- Hide everything for this player
             data.box.Visible = false
             data.nameText.Visible = false
             data.distText.Visible = false
@@ -330,41 +339,20 @@ local function updateESP()
     end
 end
 
--- ========== SETUP ==========
+-- ========== EVENT HOOKS FOR AUTO REFRESH ==========
+-- Initial existing players
 for _, player in ipairs(Players:GetPlayers()) do
     addPlayer(player)
-    player.CharacterAdded:Connect(function()
-        task.wait(0.3)
-        local model = getCharacter(player)
-        if model and playerData[player] then
-            -- Try highlight with green first; skeleton will handle color later
-            if not attachHighlight(player, model, Color3.fromRGB(0, 255, 0)) then
-                playerData[player].useSkeleton = true
-                createSkeleton(player, model)
-            end
-        end
-    end)
 end
 
-Players.PlayerAdded:Connect(function(player)
-    addPlayer(player)
-    player.CharacterAdded:Connect(function()
-        task.wait(0.3)
-        local model = getCharacter(player)
-        if model and playerData[player] then
-            if not attachHighlight(player, model, Color3.fromRGB(0, 255, 0)) then
-                playerData[player].useSkeleton = true
-                createSkeleton(player, model)
-            end
-        end
-    end)
-end)
-
+-- New players
+Players.PlayerAdded:Connect(addPlayer)
 Players.PlayerRemoving:Connect(removePlayer)
 
+-- The update loop runs every frame and will catch respawns via modelChanged detection
 RunService.RenderStepped:Connect(updateESP)
 
--- Cleanup
+-- Cleanup on script end
 local function fullClean()
     for player, data in pairs(playerData) do
         if data.box then data.box:Remove() end
@@ -377,7 +365,7 @@ local function fullClean()
 end
 game:GetService("ScriptContext").Error:Connect(fullClean)
 
--- Console toggles
+-- Expose toggles to console
 _G.setESP = setESPEnabled
 _G.ESPEnabled = espEnabled
 _G.setDeathCheck = setDeathCheck
