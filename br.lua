@@ -1,3 +1,5 @@
+--brutal
+
 -- Rayfield UI Library
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -5,6 +7,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Remote cache
@@ -25,20 +28,19 @@ local Window = Rayfield:CreateWindow({
 })
 
 -- Main Tab
-local Tab = Window:CreateTab("Main", 4483362458) -- Use a generic icon
+local Tab = Window:CreateTab("Main", 4483362458)
 
 -- ==================== LAG SERVER V2 (ABILITY SPAM) + ANTI-LAG ====================
 local AbilitySpamEnabled = false
 local AbilitySpamLoop
 local MobRemote = ReplicatedStorage.Remotes.Character.ChangeCharacter
-local IgnoreFriends = true      -- Default: ignore friends
-local AntiLagEnabled = true     -- ANTI-LAG ON BY DEFAULT
+local IgnoreFriends = true
+local AntiLagEnabled = true
 
 local function GetCurrentCharacter()
     return LocalPlayer.Data.Character.Value
 end
 
--- Find nearest player, optionally ignoring friends
 local function FindNearestPlayer()
     local char = LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -47,7 +49,6 @@ local function FindNearestPlayer()
     for _, p in pairs(Players:GetPlayers()) do
         if p == LocalPlayer then continue end
         if not p.Character then continue end
-        -- Check friend ignore condition
         if IgnoreFriends and p:IsFriendsWith(LocalPlayer.UserId) then
             continue
         end
@@ -66,7 +67,7 @@ end
 
 local function UseAbility(abilityIndex)
     local charName = GetCurrentCharacter()
-    local ability = ReplicatedStorage.Characters[charName].Abilities[abilityIndex]  --ReplicatedStorage.Characters[charName].Ultimates[abilityIndex]
+    local ability = ReplicatedStorage.Characters[charName].Abilities[abilityIndex]
     if not ability then return end
 
     local target = FindNearestPlayer()
@@ -80,30 +81,30 @@ local function UseAbility(abilityIndex)
         RemoteCache.AbilitiesRemote:FireServer(ability, 9000000)
 
         local actions = {377,380,383,384,385,387,389}
-        for i=1,7 do
+        for i = 1, 7 do
             local args = {
                 ability,
-                charName..":Abilities:"..abilityIndex,
+                charName .. ":Abilities:" .. abilityIndex,
                 i,
                 9000000,
                 {
                     HitboxCFrames = {targetCF, targetCF},
                     BestHitCharacter = targetChar,
                     HitCharacters = {targetChar},
-                    Ignore = i>2 and {ActionNumber1={targetChar}} or {},
+                    Ignore = i > 2 and { ActionNumber1 = { targetChar } } or {},
                     DeathInfo = {},
                     BlockedCharacters = {},
                     HitInfo = {
-                        IsFacing = not (i==1 or i==2),
-                        IsInFront = i<=2,
-                        Blocked = i>2 and false or nil
+                        IsFacing = not (i == 1 or i == 2),
+                        IsInFront = i <= 2,
+                        Blocked = i > 2 and false or nil
                     },
                     ServerTime = tick(),
-                    Actions = i>2 and {ActionNumber1={}} or {},
+                    Actions = i > 2 and { ActionNumber1 = {} } or {},
                     FromCFrame = targetCF
                 },
-                "Action"..actions[i],
-                i==2 and 0.1 or nil
+                "Action" .. actions[i],
+                i == 2 and 0.1 or nil
             }
             RemoteCache.CombatRemote:FireServer(unpack(args))
         end
@@ -120,7 +121,6 @@ Tab:CreateToggle({
     end
 })
 
--- SEPARATE ANTI-LAG TOGGLE (ON BY DEFAULT)
 Tab:CreateToggle({
     Name = "Anti-Lag Protection",
     CurrentValue = true,
@@ -130,7 +130,6 @@ Tab:CreateToggle({
     end
 })
 
--- Main spam toggle
 Tab:CreateToggle({
     Name = "Lag Server V2 (Ability Spam)",
     CurrentValue = false,
@@ -142,19 +141,16 @@ Tab:CreateToggle({
                 MobRemote:FireServer("Mob")
             end
             AbilitySpamLoop = task.spawn(function()
-                local abilityIndices = {"1", "2", "3", "4"}  -- Spam all four abilities
+                local abilityIndices = { "1", "2", "3", "4" }
                 while AbilitySpamEnabled do
                     for _, idx in ipairs(abilityIndices) do
                         if not AbilitySpamEnabled then break end
                         UseAbility(idx)
-                        
-                        -- ANTI-LAG: if enabled, add a short pause to reduce CPU usage
                         if AntiLagEnabled then
-                            task.wait(0.05)   -- smooth, still effective
+                            task.wait(0.05)
                         else
-                            task.wait(0)      -- original speed (may cause lag)
+                            task.wait(0)
                         end
-                        
                         if AbilitySpamEnabled then
                             local c = GetCurrentCharacter()
                             pcall(function()
@@ -164,7 +160,6 @@ Tab:CreateToggle({
                                 end
                             end)
                         end
-                        -- extra wait only if anti-lag is on
                         if AntiLagEnabled then
                             task.wait(0.05)
                         end
@@ -177,9 +172,100 @@ Tab:CreateToggle({
     end
 })
 
--- ==================== WALLCOMBO ====================
-local WallComboSection = Tab:CreateSection("WallCombo")
+-- ==================== ULTIMATE LAG MODE (SPAM ULTIMATES) ====================
+local UltimateSpamEnabled = false
+local UltimateSpamLoop
 
+local function UseUltimate(ultimateIndex)
+    local charName = GetCurrentCharacter()
+    local ultimate = ReplicatedStorage.Characters[charName].Ultimates[ultimateIndex]
+    if not ultimate then return end
+
+    local target = FindNearestPlayer()
+    if not target then return end
+
+    local targetChar = target.Character
+    local targetCF = targetChar and targetChar.HumanoidRootPart and targetChar.HumanoidRootPart.CFrame
+    if not targetCF then return end
+
+    pcall(function()
+        RemoteCache.AbilitiesRemote:FireServer(ultimate, 9000000)
+
+        local actions = {377,380,383,384,385,387,389} -- same action IDs as abilities
+        for i = 1, 7 do
+            local args = {
+                ultimate,
+                charName .. ":Ultimates:" .. ultimateIndex,
+                i,
+                9000000,
+                {
+                    HitboxCFrames = {targetCF, targetCF},
+                    BestHitCharacter = targetChar,
+                    HitCharacters = {targetChar},
+                    Ignore = i > 2 and { ActionNumber1 = { targetChar } } or {},
+                    DeathInfo = {},
+                    BlockedCharacters = {},
+                    HitInfo = {
+                        IsFacing = not (i == 1 or i == 2),
+                        IsInFront = i <= 2,
+                        Blocked = i > 2 and false or nil
+                    },
+                    ServerTime = tick(),
+                    Actions = i > 2 and { ActionNumber1 = {} } or {},
+                    FromCFrame = targetCF
+                },
+                "Action" .. actions[i],
+                i == 2 and 0.1 or nil
+            }
+            RemoteCache.CombatRemote:FireServer(unpack(args))
+        end
+    end)
+end
+
+Tab:CreateToggle({
+    Name = "Ultimate Lag Mode (Spam Ultimates)",
+    CurrentValue = false,
+    Flag = "UltimateLagToggle",
+    Callback = function(Value)
+        UltimateSpamEnabled = Value
+        if Value then
+            if GetCurrentCharacter() ~= "Mob" then
+                MobRemote:FireServer("Mob")
+            end
+            UltimateSpamLoop = task.spawn(function()
+                -- You can adjust the indices if your character has more/fewer ultimates
+                local ultimateIndices = { "1", "2", "3", "4" }
+                while UltimateSpamEnabled do
+                    for _, idx in ipairs(ultimateIndices) do
+                        if not UltimateSpamEnabled then break end
+                        UseUltimate(idx)
+                        if AntiLagEnabled then
+                            task.wait(0.05)
+                        else
+                            task.wait(0)
+                        end
+                        if UltimateSpamEnabled then
+                            local c = GetCurrentCharacter()
+                            pcall(function()
+                                local ultimate = ReplicatedStorage.Characters[c].Ultimates[idx]
+                                if ultimate then
+                                    ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ultimate)
+                                end
+                            end)
+                        end
+                        if AntiLagEnabled then
+                            task.wait(0.05)
+                        end
+                    end
+                end
+            end)
+        else
+            if UltimateSpamLoop then task.cancel(UltimateSpamLoop) end
+        end
+    end
+})
+
+-- ==================== WALLCOMBO ====================
 local WallComboConfig = {
     Enabled = false,
     Method = "Method 1",
@@ -188,7 +274,6 @@ local WallComboConfig = {
     coreModule = nil
 }
 
--- Helper to set identity
 local function Setidentity()
     pcall(function()
         setthreadidentity(5)
@@ -196,7 +281,6 @@ local function Setidentity()
     end)
 end
 
--- Load core module
 task.spawn(function()
     Setidentity()
     local success, result = pcall(function()
@@ -207,7 +291,6 @@ task.spawn(function()
     end
 end)
 
--- Ignore friends toggle for WallCombo
 Tab:CreateToggle({
     Name = "Ignore Friends (WallCombo)",
     CurrentValue = false,
@@ -217,7 +300,6 @@ Tab:CreateToggle({
     end
 })
 
--- Helper functions for wall combo
 local function getCurrentCharacterName()
     return LocalPlayer.Data.Character.Value
 end
@@ -252,9 +334,9 @@ end
 
 local function getWallPosition()
     local char = LocalPlayer.Character
-    if not char then return Vector3.new(0,0,0) end
+    if not char then return Vector3.new(0, 0, 0) end
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return Vector3.new(0,0,0) end
+    if not hrp then return Vector3.new(0, 0, 0) end
     return hrp.Position + (hrp.CFrame.LookVector * 5)
 end
 
@@ -265,7 +347,6 @@ local function getRootCFrame()
     return hrp and hrp.CFrame or CFrame.new()
 end
 
--- Method 1 (remote-based)
 local function wallcomboMethod1()
     local currentChar = getCurrentCharacterName()
     if not characterHasWallCombo(currentChar) then return false end
@@ -276,29 +357,29 @@ local function wallcomboMethod1()
 
     pcall(function()
         local abilityObject = ReplicatedStorage.Characters[currentChar].WallCombo
-        local actionId = math.random(1000,9999) + math.random(1000,5000)
+        local actionId = math.random(1000, 9999) + math.random(1000, 5000)
         local serverTime = tick()
         local wallPos = getWallPosition()
         local fromCF = getRootCFrame()
 
         RemoteCache.AbilitiesRemote:FireServer(abilityObject, actionId, nil, targetPlayer.Character, wallPos)
 
-        for i=1,4 do
+        for i = 1, 4 do
             local args = {
                 abilityObject,
-                "Characters:"..currentChar..":WallCombo",
+                "Characters:" .. currentChar .. ":WallCombo",
                 i,
                 actionId,
                 {
-                    HitboxCFrames = i==1 and {} or {CFrame.new(wallPos)},
+                    HitboxCFrames = i == 1 and {} or { CFrame.new(wallPos) },
                     BestHitCharacter = targetPlayer.Character,
-                    HitCharacters = {targetPlayer.Character},
-                    Ignore = (i>=2 and i<=3) and {ActionNumber1={targetPlayer.Character}} or {},
+                    HitCharacters = { targetPlayer.Character },
+                    Ignore = (i >= 2 and i <= 3) and { ActionNumber1 = { targetPlayer.Character } } or {},
                     DeathInfo = {},
                     BlockedCharacters = {},
-                    HitInfo = {IsFacing = true, IsInFront = true, Blocked = false},
+                    HitInfo = { IsFacing = true, IsInFront = true, Blocked = false },
                     ServerTime = serverTime,
-                    Actions = i==4 and {
+                    Actions = i == 4 and {
                         ActionNumber1 = {
                             [targetPlayer.Name] = {
                                 StartCFrameStr = tostring(CFrame.new(targetPlayer.Character.HumanoidRootPart.Position)),
@@ -316,8 +397,8 @@ local function wallcomboMethod1()
                     } or {},
                     FromCFrame = fromCF
                 },
-                "Action"..math.random(1000,9999),
-                i==4 and 0.1 or nil
+                "Action" .. math.random(1000, 9999),
+                i == 4 and 0.1 or nil
             }
             RemoteCache.CombatRemote:FireServer(unpack(args))
         end
@@ -332,7 +413,7 @@ local function executeWallCombo()
     end
 end
 
-local WallComboToggle = Tab:CreateToggle({
+Tab:CreateToggle({
     Name = "Spam WallCombo",
     CurrentValue = false,
     Flag = "WallComboToggle",
@@ -375,7 +456,7 @@ SpeedTab:CreateToggle({
 })
 SpeedTab:CreateSlider({
     Name = "Speed Multiplier",
-    Range = {1, 50},
+    Range = { 1, 50 },
     Increment = 1,
     CurrentValue = 5,
     Callback = function(Value)
@@ -383,35 +464,30 @@ SpeedTab:CreateSlider({
     end,
 })
 
--- ==================== NEW: LAGSERVER TAB WITH 10 INDEPENDENT SPAMMERS ====================
+-- ==================== LAGSERVER TAB – 50 INDEPENDENT SPAMMERS ====================
 local LagServerTab = Window:CreateTab("LagServer", 4483362458)
 
--- Array to store state and threads for each spammer
 local SpammerEnabled = {}
 local SpammerThreads = {}
 
--- Function to ensure character is Mob (used by each spammer when started)
 local function EnsureMob()
     if GetCurrentCharacter() ~= "Mob" then
         MobRemote:FireServer("Mob")
-        task.wait(0.1) -- small delay to allow switch
+        task.wait(0.1)
     end
 end
 
--- Individual spammer loop
 local function SpammerLoop(index)
-    local abilityIndices = {"1", "2", "3", "4"}
+    local abilityIndices = { "1", "2", "3", "4" }
     while SpammerEnabled[index] do
         for _, idx in ipairs(abilityIndices) do
             if not SpammerEnabled[index] then break end
             UseAbility(idx)
-
             if AntiLagEnabled then
                 task.wait(0.05)
             else
                 task.wait(0)
             end
-
             if SpammerEnabled[index] then
                 local c = GetCurrentCharacter()
                 pcall(function()
@@ -421,7 +497,6 @@ local function SpammerLoop(index)
                     end
                 end)
             end
-
             if AntiLagEnabled then
                 task.wait(0.05)
             end
@@ -429,7 +504,6 @@ local function SpammerLoop(index)
     end
 end
 
--- Start a specific spammer (creates thread if enabled)
 local function StartSpammer(index)
     if SpammerThreads[index] then
         task.cancel(SpammerThreads[index])
@@ -441,45 +515,81 @@ local function StartSpammer(index)
     end
 end
 
--- Master toggle to enable/disable all 10 spammers
+-- Master toggle for all 50 spammers
 local masterToggleValue = false
+local enableSequence = nil
+
 LagServerTab:CreateToggle({
-    Name = "Master Control (All 10 Spammers)",
+    Name = "Master Control (All 50 Spammers)",
     CurrentValue = false,
     Flag = "MasterSpammerToggle",
     Callback = function(Value)
         masterToggleValue = Value
-        for i = 1, 10 do
-            SpammerEnabled[i] = Value
-            StartSpammer(i)
-            -- Also update the UI toggle for each spammer (optional, but good for consistency)
-            pcall(function()
-                Rayfield:SetToggle("SpammerToggle_" .. i, Value)
+
+        if enableSequence then
+            task.cancel(enableSequence)
+            enableSequence = nil
+        end
+
+        if Value then
+            -- Enable one by one with 0.45s delay
+            enableSequence = task.spawn(function()
+                for i = 1, 10 do
+                    if not masterToggleValue then break end
+                    SpammerEnabled[i] = true
+                    StartSpammer(i)
+                    pcall(function()
+                        Rayfield:SetToggle("SpammerToggle_" .. i, true)
+                    end)
+                    if i < 10 then task.wait(0.45) end
+                end
+                enableSequence = nil
             end)
+        else
+            -- Disable instantly
+            for i = 1, 10 do
+                SpammerEnabled[i] = false
+                StartSpammer(i)
+                pcall(function()
+                    Rayfield:SetToggle("SpammerToggle_" .. i, false)
+                end)
+            end
         end
     end
 })
 
--- Create 10 individual spammers
+-- Create 50 individual toggles
 for i = 1, 10 do
-    local toggleName = "Spammer #" .. i
     LagServerTab:CreateToggle({
-        Name = toggleName,
+        Name = "Spammer #" .. i,
         CurrentValue = false,
         Flag = "SpammerToggle_" .. i,
         Callback = function(Value)
             SpammerEnabled[i] = Value
             StartSpammer(i)
-            -- If this spammer is turned off, and master toggle is on, we don't change master
-            -- If all spammers become off, optionally we could auto-turn master off, but not required.
         end
     })
 end
 
+-- ==================== KEYBIND: TOGGLE ALL 50 SPAMMERS WITH 'L' ====================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.L then
+        -- Toggle the master control toggle
+        local newValue = not masterToggleValue
+        Rayfield:SetToggle("MasterSpammerToggle", newValue)
+        Rayfield:Notify({
+            Title = "Keybind",
+            Content = "Toggled all 10 spammers " .. (newValue and "ON" or "OFF"),
+            Duration = 2
+        })
+    end
+end)
+
 -- ==================== NOTIFICATION ====================
 Rayfield:Notify({
     Title = "Script Ready",
-    Content = "All features loaded. Anti-Lag is ON by default. New LagServer tab with 10 independent spammers added.",
+    Content = "All features loaded. Press L to toggle all 50 spammers. Ultimate spam also respects Ignore Friends.",
     Duration = 5
 })
 
