@@ -1,196 +1,597 @@
-local plrs = game:GetService("Players")
-local uis = game:GetService("UserInputService")
-local rs = game:GetService("ReplicatedStorage")
+--brutal
 
-local me = plrs.LocalPlayer
+-- Rayfield UI Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
-local gui_parent = game:GetService("CoreGui") or me:WaitForChild("PlayerGui")
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
 
-local sg = Instance.new("ScreenGui")
-sg.Name = "Farmer"
-sg.ResetOnSpawn = false
-sg.Parent = gui_parent
+-- Remote cache
+local RemoteCache = {
+    CharactersFolder = ReplicatedStorage:WaitForChild("Characters"),
+    RemotesFolder = ReplicatedStorage:WaitForChild("Remotes"),
+    AbilitiesRemote = ReplicatedStorage.Remotes.Abilities.Ability,
+    CombatRemote = ReplicatedStorage.Remotes.Combat.Action,
+    DashRemote = ReplicatedStorage.Remotes.Character.Dash
+}
 
-local frame = Instance.new("Frame")
-frame.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-frame.BorderColor3 = Color3.fromRGB(80, 80, 100)
-frame.BorderSizePixel = 2
-frame.Position = UDim2.new(0.4, 0, 0.3, 0)
-frame.Size = UDim2.new(0, 260, 0, 100)
-frame.Parent = sg
+-- Window
+local Window = Rayfield:CreateWindow({
+    Name = "Ultimate Battlegrounds",
+    LoadingTitle = "Loading Features...",
+    LoadingSubtitle = "by elton",
+    ConfigurationSaving = { Enabled = false }
+})
 
-local tbar = Instance.new("Frame")
-tbar.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-tbar.BorderColor3 = Color3.fromRGB(80, 80, 100)
-tbar.BorderSizePixel = 1
-tbar.Size = UDim2.new(1, 0, 0, 24)
-tbar.Parent = frame
+-- Main Tab
+local Tab = Window:CreateTab("Main", 4483362458)
 
-local tlabel = Instance.new("TextLabel")
-tlabel.BackgroundTransparency = 1
-tlabel.Position = UDim2.new(0, 6, 0, 0)
-tlabel.Size = UDim2.new(1, -90, 1, 0)
-tlabel.Font = Enum.Font.Code
-tlabel.Text = "Be a streamer auto farmer"
-tlabel.TextColor3 = Color3.fromRGB(220, 220, 240)
-tlabel.TextSize = 12
-tlabel.TextXAlignment = Enum.TextXAlignment.Left
-tlabel.Parent = tbar
+-- ==================== LAG SERVER V2 (ABILITY SPAM) + ANTI-LAG ====================
+local AbilitySpamEnabled = false
+local AbilitySpamLoop
+local MobRemote = ReplicatedStorage.Remotes.Character.ChangeCharacter
+local IgnoreFriends = true
+local AntiLagEnabled = true
 
-local cbtn = Instance.new("TextButton")
-cbtn.BackgroundColor3 = Color3.fromRGB(220, 70, 70)
-cbtn.BorderSizePixel = 0
-cbtn.Position = UDim2.new(1, -22, 0.5, -8)
-cbtn.Size = UDim2.new(0, 16, 0, 16)
-cbtn.Font = Enum.Font.Code
-cbtn.Text = "X"
-cbtn.TextColor3 = Color3.fromRGB(25, 25, 25)
-cbtn.TextSize = 10
-cbtn.Parent = tbar
-
-local mbtn = Instance.new("TextButton")
-mbtn.BackgroundColor3 = Color3.fromRGB(220, 190, 60)
-mbtn.BorderSizePixel = 0
-mbtn.Position = UDim2.new(1, -42, 0.5, -8)
-mbtn.Size = UDim2.new(0, 16, 0, 16)
-mbtn.Font = Enum.Font.Code
-mbtn.Text = "_"
-mbtn.TextColor3 = Color3.fromRGB(25, 25, 25)
-mbtn.TextSize = 10
-mbtn.Parent = tbar
-
-local toggles = {}
-
-local function mktoggle(txt, y, fn)
-	local row = Instance.new("Frame")
-	row.BackgroundTransparency = 1
-	row.Position = UDim2.new(0, 8, 0, y)
-	row.Size = UDim2.new(1, -16, 0, 18)
-	row.Parent = frame
-
-	local lbl = Instance.new("TextLabel")
-	lbl.BackgroundTransparency = 1
-	lbl.Size = UDim2.new(1, -22, 1, 0)
-	lbl.Font = Enum.Font.Code
-	lbl.Text = txt
-	lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
-	lbl.TextSize = 11
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.Parent = row
-
-	local box = Instance.new("TextButton")
-	box.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-	box.BorderColor3 = Color3.fromRGB(80, 80, 100)
-	box.BorderSizePixel = 1
-	box.Position = UDim2.new(1, -16, 0.5, -7)
-	box.Size = UDim2.new(0, 14, 0, 14)
-	box.Font = Enum.Font.Code
-	box.Text = ""
-	box.TextColor3 = Color3.fromRGB(200, 200, 255)
-	box.TextSize = 10
-	box.Parent = row
-
-	local on = false
-	box.MouseButton1Click:Connect(function()
-		on = not on
-		box.Text = on and "X" or ""
-		box.BackgroundColor3 = on and Color3.fromRGB(70, 100, 70) or Color3.fromRGB(35, 35, 45)
-		fn(on)
-	end)
+local function GetCurrentCharacter()
+    return LocalPlayer.Data.Character.Value
 end
 
-local sevt = rs:WaitForChild("StreamingEvent")
-local gmbox = rs:WaitForChild("GetMailBox")
-
-mktoggle("Auto Respond", 32, function(s)
-	toggles.respond = s
-	if not s then return end
-	task.spawn(function()
-		while toggles.respond do
-			sevt:FireServer("Responded")
-			task.wait(0.1)
-		end
-	end)
-end)
-
-mktoggle("Auto Collect", 54, function(s)
-	toggles.collect = s
-	if not s then return end
-	task.spawn(function()
-		while toggles.collect do
-			gmbox:FireServer()
-			task.wait(0.1)
-		end
-	end)
-end)
-
-cbtn.MouseButton1Click:Connect(function()
-	sg:Destroy()
-end)
-
-local minimized = false
-mbtn.MouseButton1Click:Connect(function()
-	minimized = not minimized
-	for _, c in ipairs(frame:GetChildren()) do
-		if c ~= tbar then
-			c.Visible = not minimized
-		end
-	end
-	frame.Size = minimized and UDim2.new(0, 260, 0, 24) or UDim2.new(0, 260, 0, 452)
-end)
-
-local drag, ds, sp
-tbar.InputBegan:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 then
-		drag = true
-		ds = i.Position
-		sp = frame.Position
-	end
-end)
-tbar.InputEnded:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1 then
-		drag = false
-	end
-end)
-uis.InputChanged:Connect(function(i)
-	if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
-		local d = i.Position - ds
-		frame.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
-	end
-end)
-
-local pp_connections = {}
-
-local function patch_pp(pp)
-	if pp:IsA("ProximityPrompt") then
-		pp.HoldDuration = 0
-	end
+local function FindNearestPlayer()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local nearest, dist = nil, math.huge
+    for _, p in pairs(Players:GetPlayers()) do
+        if p == LocalPlayer then continue end
+        if not p.Character then continue end
+        if IgnoreFriends and p:IsFriendsWith(LocalPlayer.UserId) then
+            continue
+        end
+        local tr = p.Character:FindFirstChild("HumanoidRootPart")
+        local th = p.Character:FindFirstChild("Humanoid")
+        if tr and th and (th:GetAttribute("Health") or th.Health) > 0 then
+            local d = (hrp.Position - tr.Position).Magnitude
+            if d < dist then
+                dist = d
+                nearest = p
+            end
+        end
+    end
+    return nearest
 end
 
-local function start_pp_patch()
-	-- patch all existing prompts
-	for _, v in ipairs(workspace:GetDescendants()) do
-		patch_pp(v)
-	end
-	-- watch for new ones
-	local c = workspace.DescendantAdded:Connect(function(v)
-		patch_pp(v)
-	end)
-	table.insert(pp_connections, c)
+local function UseAbility(abilityIndex)
+    local charName = GetCurrentCharacter()
+    local ability = ReplicatedStorage.Characters[charName].Abilities[abilityIndex]
+    if not ability then return end
+
+    local target = FindNearestPlayer()
+    if not target then return end
+
+    local targetChar = target.Character
+    local targetCF = targetChar and targetChar.HumanoidRootPart and targetChar.HumanoidRootPart.CFrame
+    if not targetCF then return end
+
+    pcall(function()
+        RemoteCache.AbilitiesRemote:FireServer(ability, 9000000)
+
+        local actions = {377,380,383,384,385,387,389}
+        for i = 1, 7 do
+            local args = {
+                ability,
+                charName .. ":Abilities:" .. abilityIndex,
+                i,
+                9000000,
+                {
+                    HitboxCFrames = {targetCF, targetCF},
+                    BestHitCharacter = targetChar,
+                    HitCharacters = {targetChar},
+                    Ignore = i > 2 and { ActionNumber1 = { targetChar } } or {},
+                    DeathInfo = {},
+                    BlockedCharacters = {},
+                    HitInfo = {
+                        IsFacing = not (i == 1 or i == 2),
+                        IsInFront = i <= 2,
+                        Blocked = i > 2 and false or nil
+                    },
+                    ServerTime = tick(),
+                    Actions = i > 2 and { ActionNumber1 = {} } or {},
+                    FromCFrame = targetCF
+                },
+                "Action" .. actions[i],
+                i == 2 and 0.1 or nil
+            }
+            RemoteCache.CombatRemote:FireServer(unpack(args))
+        end
+    end)
 end
 
-local function stop_pp_patch()
-	for _, c in ipairs(pp_connections) do
-		c:Disconnect()
-	end
-	pp_connections = {}
+-- UI Elements for Lag Server V2
+Tab:CreateToggle({
+    Name = "Ignore Friends",
+    CurrentValue = true,
+    Flag = "IgnoreFriendsToggle",
+    Callback = function(Value)
+        IgnoreFriends = Value
+    end
+})
+
+Tab:CreateToggle({
+    Name = "Anti-Lag Protection",
+    CurrentValue = true,
+    Flag = "AntiLagToggle",
+    Callback = function(Value)
+        AntiLagEnabled = Value
+    end
+})
+
+Tab:CreateToggle({
+    Name = "Lag Server V2 (Ability Spam)",
+    CurrentValue = false,
+    Flag = "LagServerV2Toggle",
+    Callback = function(Value)
+        AbilitySpamEnabled = Value
+        if Value then
+            if GetCurrentCharacter() ~= "Mob" then
+                MobRemote:FireServer("Mob")
+            end
+            AbilitySpamLoop = task.spawn(function()
+                local abilityIndices = { "1", "2", "3", "4" }
+                while AbilitySpamEnabled do
+                    for _, idx in ipairs(abilityIndices) do
+                        if not AbilitySpamEnabled then break end
+                        UseAbility(idx)
+                        if AntiLagEnabled then
+                            task.wait(0.05)
+                        else
+                            task.wait(0)
+                        end
+                        if AbilitySpamEnabled then
+                            local c = GetCurrentCharacter()
+                            pcall(function()
+                                local ability = ReplicatedStorage.Characters[c].Abilities[idx]
+                                if ability then
+                                    ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ability)
+                                end
+                            end)
+                        end
+                        if AntiLagEnabled then
+                            task.wait(0.05)
+                        end
+                    end
+                end
+            end)
+        else
+            if AbilitySpamLoop then task.cancel(AbilitySpamLoop) end
+        end
+    end
+})
+
+-- ==================== ULTIMATE LAG MODE (SPAM ULTIMATES) ====================
+local UltimateSpamEnabled = false
+local UltimateSpamLoop
+
+local function UseUltimate(ultimateIndex)
+    local charName = GetCurrentCharacter()
+    local ultimate = ReplicatedStorage.Characters[charName].Ultimates[ultimateIndex]
+    if not ultimate then return end
+
+    local target = FindNearestPlayer()
+    if not target then return end
+
+    local targetChar = target.Character
+    local targetCF = targetChar and targetChar.HumanoidRootPart and targetChar.HumanoidRootPart.CFrame
+    if not targetCF then return end
+
+    pcall(function()
+        RemoteCache.AbilitiesRemote:FireServer(ultimate, 9000000)
+
+        local actions = {377,380,383,384,385,387,389} -- same action IDs as abilities
+        for i = 1, 7 do
+            local args = {
+                ultimate,
+                charName .. ":Ultimates:" .. ultimateIndex,
+                i,
+                9000000,
+                {
+                    HitboxCFrames = {targetCF, targetCF},
+                    BestHitCharacter = targetChar,
+                    HitCharacters = {targetChar},
+                    Ignore = i > 2 and { ActionNumber1 = { targetChar } } or {},
+                    DeathInfo = {},
+                    BlockedCharacters = {},
+                    HitInfo = {
+                        IsFacing = not (i == 1 or i == 2),
+                        IsInFront = i <= 2,
+                        Blocked = i > 2 and false or nil
+                    },
+                    ServerTime = tick(),
+                    Actions = i > 2 and { ActionNumber1 = {} } or {},
+                    FromCFrame = targetCF
+                },
+                "Action" .. actions[i],
+                i == 2 and 0.1 or nil
+            }
+            RemoteCache.CombatRemote:FireServer(unpack(args))
+        end
+    end)
 end
 
-mktoggle("Instant ProxPrompt", 76, function(s)
-	toggles.proxprompt = s
-	if s then
-		start_pp_patch()
-	else
-		stop_pp_patch()
-	end
+Tab:CreateToggle({
+    Name = "Ultimate Lag Mode (Spam Ultimates)",
+    CurrentValue = false,
+    Flag = "UltimateLagToggle",
+    Callback = function(Value)
+        UltimateSpamEnabled = Value
+        if Value then
+            if GetCurrentCharacter() ~= "Mob" then
+                MobRemote:FireServer("Mob")
+            end
+            UltimateSpamLoop = task.spawn(function()
+                -- You can adjust the indices if your character has more/fewer ultimates
+                local ultimateIndices = { "1", "2", "3", "4" }
+                while UltimateSpamEnabled do
+                    for _, idx in ipairs(ultimateIndices) do
+                        if not UltimateSpamEnabled then break end
+                        UseUltimate(idx)
+                        if AntiLagEnabled then
+                            task.wait(0.05)
+                        else
+                            task.wait(0)
+                        end
+                        if UltimateSpamEnabled then
+                            local c = GetCurrentCharacter()
+                            pcall(function()
+                                local ultimate = ReplicatedStorage.Characters[c].Ultimates[idx]
+                                if ultimate then
+                                    ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ultimate)
+                                end
+                            end)
+                        end
+                        if AntiLagEnabled then
+                            task.wait(0.05)
+                        end
+                    end
+                end
+            end)
+        else
+            if UltimateSpamLoop then task.cancel(UltimateSpamLoop) end
+        end
+    end
+})
+
+-- ==================== WALLCOMBO ====================
+local WallComboConfig = {
+    Enabled = false,
+    Method = "Method 1",
+    IgnoreFriends = false,
+    RenderName = "WallComboV2",
+    coreModule = nil
+}
+
+local function Setidentity()
+    pcall(function()
+        setthreadidentity(5)
+        setthreadcontext(5)
+    end)
+end
+
+task.spawn(function()
+    Setidentity()
+    local success, result = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Core"))
+    end)
+    if success and result then
+        WallComboConfig.coreModule = result
+    end
 end)
+
+Tab:CreateToggle({
+    Name = "Ignore Friends (WallCombo)",
+    CurrentValue = false,
+    Flag = "WallComboIgnoreFriends",
+    Callback = function(Value)
+        WallComboConfig.IgnoreFriends = Value
+    end
+})
+
+local function getCurrentCharacterName()
+    return LocalPlayer.Data.Character.Value
+end
+
+local function characterHasWallCombo(name)
+    local folder = ReplicatedStorage.Characters:FindFirstChild(name)
+    return folder and folder:FindFirstChild("WallCombo") ~= nil
+end
+
+local function findNearestPlayerTarget()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local nearest, shortest = nil, math.huge
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            if WallComboConfig.IgnoreFriends and LocalPlayer:IsFriendsWith(p.UserId) then continue end
+            local tr = p.Character:FindFirstChild("HumanoidRootPart")
+            local th = p.Character:FindFirstChildOfClass("Humanoid")
+            if tr and th and (th:GetAttribute("Health") or th.Health) > 0 then
+                local d = (hrp.Position - tr.Position).Magnitude
+                if d < shortest and d < 900000 then
+                    shortest = d
+                    nearest = p
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+local function getWallPosition()
+    local char = LocalPlayer.Character
+    if not char then return Vector3.new(0, 0, 0) end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return Vector3.new(0, 0, 0) end
+    return hrp.Position + (hrp.CFrame.LookVector * 5)
+end
+
+local function getRootCFrame()
+    local char = LocalPlayer.Character
+    if not char then return CFrame.new() end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    return hrp and hrp.CFrame or CFrame.new()
+end
+
+local function wallcomboMethod1()
+    local currentChar = getCurrentCharacterName()
+    if not characterHasWallCombo(currentChar) then return false end
+    local targetPlayer = findNearestPlayerTarget()
+    if not targetPlayer or not targetPlayer.Character then return false end
+    local localChar = LocalPlayer.Character
+    if not localChar then return false end
+
+    pcall(function()
+        local abilityObject = ReplicatedStorage.Characters[currentChar].WallCombo
+        local actionId = math.random(1000, 9999) + math.random(1000, 5000)
+        local serverTime = tick()
+        local wallPos = getWallPosition()
+        local fromCF = getRootCFrame()
+
+        RemoteCache.AbilitiesRemote:FireServer(abilityObject, actionId, nil, targetPlayer.Character, wallPos)
+
+        for i = 1, 4 do
+            local args = {
+                abilityObject,
+                "Characters:" .. currentChar .. ":WallCombo",
+                i,
+                actionId,
+                {
+                    HitboxCFrames = i == 1 and {} or { CFrame.new(wallPos) },
+                    BestHitCharacter = targetPlayer.Character,
+                    HitCharacters = { targetPlayer.Character },
+                    Ignore = (i >= 2 and i <= 3) and { ActionNumber1 = { targetPlayer.Character } } or {},
+                    DeathInfo = {},
+                    BlockedCharacters = {},
+                    HitInfo = { IsFacing = true, IsInFront = true, Blocked = false },
+                    ServerTime = serverTime,
+                    Actions = i == 4 and {
+                        ActionNumber1 = {
+                            [targetPlayer.Name] = {
+                                StartCFrameStr = tostring(CFrame.new(targetPlayer.Character.HumanoidRootPart.Position)),
+                                ImpulseVelocity = Vector3.new(-67499, 150000, 307),
+                                AbilityName = "WallCombo",
+                                RotVelocityStr = "0,0,0",
+                                VelocityStr = "0,0,0",
+                                Gravity = 200000,
+                                RotImpulseVelocity = Vector3.new(8977, -5293, 6185),
+                                Seed = math.random(100000000, 999999999),
+                                LookVectorStr = tostring(fromCF.LookVector),
+                                Duration = 2
+                            }
+                        }
+                    } or {},
+                    FromCFrame = fromCF
+                },
+                "Action" .. math.random(1000, 9999),
+                i == 4 and 0.1 or nil
+            }
+            RemoteCache.CombatRemote:FireServer(unpack(args))
+        end
+    end)
+    return true
+end
+
+local function executeWallCombo()
+    if not WallComboConfig.Enabled then return end
+    if WallComboConfig.Method == "Method 1" then
+        wallcomboMethod1()
+    end
+end
+
+Tab:CreateToggle({
+    Name = "Spam WallCombo",
+    CurrentValue = false,
+    Flag = "WallComboToggle",
+    Callback = function(Value)
+        WallComboConfig.Enabled = Value
+        Setidentity()
+        if Value then
+            RunService:BindToRenderStep(WallComboConfig.RenderName, Enum.RenderPriority.Input.Value, executeWallCombo)
+        else
+            RunService:UnbindFromRenderStep(WallComboConfig.RenderName)
+        end
+    end
+})
+
+-- ==================== SPEED HACK ====================
+local speed_amnt = 5
+local speed_enabled = false
+
+local function getChar()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    return char:WaitForChild("HumanoidRootPart"), char:WaitForChild("Humanoid")
+end
+
+RunService:BindToRenderStep("speed_loop", 2000, function(dt)
+    if speed_enabled then
+        local hrp, hum = getChar()
+        if hrp and hum then
+            hrp.CFrame = hrp.CFrame + (hum.MoveDirection * dt * 5 * speed_amnt)
+        end
+    end
+end)
+
+local SpeedTab = Window:CreateTab("Speed", 4483362458)
+SpeedTab:CreateToggle({
+    Name = "Enable Speed",
+    CurrentValue = false,
+    Callback = function(Value)
+        speed_enabled = Value
+    end,
+})
+SpeedTab:CreateSlider({
+    Name = "Speed Multiplier",
+    Range = { 1, 50 },
+    Increment = 1,
+    CurrentValue = 5,
+    Callback = function(Value)
+        speed_amnt = Value
+    end,
+})
+
+-- ==================== LAGSERVER TAB – 50 INDEPENDENT SPAMMERS ====================
+local LagServerTab = Window:CreateTab("LagServer", 4483362458)
+
+local SpammerEnabled = {}
+local SpammerThreads = {}
+
+local function EnsureMob()
+    if GetCurrentCharacter() ~= "Mob" then
+        MobRemote:FireServer("Mob")
+        task.wait(0.1)
+    end
+end
+
+local function SpammerLoop(index)
+    local abilityIndices = { "1", "2", "3", "4" }
+    while SpammerEnabled[index] do
+        for _, idx in ipairs(abilityIndices) do
+            if not SpammerEnabled[index] then break end
+            UseAbility(idx)
+            if AntiLagEnabled then
+                task.wait(0.05)
+            else
+                task.wait(0)
+            end
+            if SpammerEnabled[index] then
+                local c = GetCurrentCharacter()
+                pcall(function()
+                    local ability = ReplicatedStorage.Characters[c].Abilities[idx]
+                    if ability then
+                        ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ability)
+                    end
+                end)
+            end
+            if AntiLagEnabled then
+                task.wait(0.05)
+            end
+        end
+    end
+end
+
+local function StartSpammer(index)
+    if SpammerThreads[index] then
+        task.cancel(SpammerThreads[index])
+        SpammerThreads[index] = nil
+    end
+    if SpammerEnabled[index] then
+        EnsureMob()
+        SpammerThreads[index] = task.spawn(SpammerLoop, index)
+    end
+end
+
+-- Master toggle for all 50 spammers
+local masterToggleValue = false
+local enableSequence = nil
+
+LagServerTab:CreateToggle({
+    Name = "Master Control (All 50 Spammers)",
+    CurrentValue = false,
+    Flag = "MasterSpammerToggle",
+    Callback = function(Value)
+        masterToggleValue = Value
+
+        if enableSequence then
+            task.cancel(enableSequence)
+            enableSequence = nil
+        end
+
+        if Value then
+            -- Enable one by one with 0.45s delay
+            enableSequence = task.spawn(function()
+                for i = 1, 10 do
+                    if not masterToggleValue then break end
+                    SpammerEnabled[i] = true
+                    StartSpammer(i)
+                    pcall(function()
+                        Rayfield:SetToggle("SpammerToggle_" .. i, true)
+                    end)
+                    if i < 10 then task.wait(0.45) end
+                end
+                enableSequence = nil
+            end)
+        else
+            -- Disable instantly
+            for i = 1, 10 do
+                SpammerEnabled[i] = false
+                StartSpammer(i)
+                pcall(function()
+                    Rayfield:SetToggle("SpammerToggle_" .. i, false)
+                end)
+            end
+        end
+    end
+})
+
+-- Create 50 individual toggles
+for i = 1, 10 do
+    LagServerTab:CreateToggle({
+        Name = "Spammer #" .. i,
+        CurrentValue = false,
+        Flag = "SpammerToggle_" .. i,
+        Callback = function(Value)
+            SpammerEnabled[i] = Value
+            StartSpammer(i)
+        end
+    })
+end
+
+-- ==================== KEYBIND: TOGGLE ALL 50 SPAMMERS WITH 'L' ====================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.L then
+        -- Toggle the master control toggle
+        local newValue = not masterToggleValue
+        Rayfield:SetToggle("MasterSpammerToggle", newValue)
+        Rayfield:Notify({
+            Title = "Keybind",
+            Content = "Toggled all 10 spammers " .. (newValue and "ON" or "OFF"),
+            Duration = 2
+        })
+    end
+end)
+
+-- ==================== NOTIFICATION ====================
+Rayfield:Notify({
+    Title = "Script Ready",
+    Content = "All features loaded. Press L to toggle all 50 spammers. Ultimate spam also respects Ignore Friends.",
+    Duration = 5
+})
+
+-- Load configuration
+Rayfield:LoadConfiguration()
