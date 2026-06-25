@@ -7,97 +7,6 @@ local humanoid = character:FindFirstChild("Humanoid")
 local seat = humanoid and humanoid.SeatPart
 if not seat then return warn("You are not sitting in a car") end
 
--- Find the car model
-local car = seat.Parent
-while car and car ~= workspace do
-    if car:IsA("Model") and car:FindFirstChildWhichIsA("VehicleSeat") then break end
-    car = car.Parent
-end
-if not car or car == workspace then return warn("Could not find car model") end
-
-print("Found car:", car.Name)
-
--- Ensure car has a PrimaryPart
-if not car.PrimaryPart then
-    local part = car:FindFirstChildWhichIsA("BasePart")
-    if part then 
-        car.PrimaryPart = part 
-    else 
-        return error("Car has no BasePart")
-    end
-end
-
--- 🧠 Detect which game mode is active
-local checkpointsFolder = workspace:FindFirstChild("HighwayRace_solo_ServerCheckpoints")
-local mode = "solo"
-if not checkpointsFolder then
-    checkpointsFolder = workspace:FindFirstChild("HighwayRace_ServerCheckpoints")
-    mode = "normal"
-end
-if not checkpointsFolder then
-    return warn("No checkpoints folder found (HighwayRace_solo_ServerCheckpoints or HighwayRace_ServerCheckpoints)")
-end
-
-print("Detected mode:", mode, "→ using folder:", checkpointsFolder.Name)
-
--- Build checkpoint list from 1 to 27 + ServerFinishLine
-local checkpoints = {}
-for i = 1, 27 do
-    local cp = checkpointsFolder:FindFirstChild(tostring(i))
-    if cp then
-        table.insert(checkpoints, cp)
-    else
-        warn("Checkpoint", i, "missing in", checkpointsFolder.Name)
-    end
-end
-local finishLine = checkpointsFolder:FindFirstChild("ServerFinishLine")
-if finishLine then
-    table.insert(checkpoints, finishLine)
-else
-    warn("ServerFinishLine missing in", checkpointsFolder.Name)
-end
-
-if #checkpoints == 0 then
-    return warn("No checkpoints found")
-end
-
--- Teleport function (raises car by 2 studs)
-local function teleport(target)
-    local raise = 2
-    if target:IsA("BasePart") then
-        car:SetPrimaryPartCFrame(target.CFrame + Vector3.new(0, raise, 0))
-        print("Teleported to", target.Name)
-    elseif target:IsA("Model") and target.PrimaryPart then
-        car:SetPrimaryPartCFrame(target.PrimaryPart.CFrame + Vector3.new(0, raise, 0))
-        print("Teleported to model", target.Name)
-    else
-        warn("Invalid target:", target)
-    end
-end
-
--- Start teleporting
-for _, cp in ipairs(checkpoints) do
-    if cp then
-        teleport(cp)
-    end
-    task.wait(0.5)
-end
-
-print("✅ All checkpoints visited in", mode, "mode!")
-
-
-
------------2nd script-----------------------
-
--- Paste into Command Bar while sitting in your car
-local player = game.Players.LocalPlayer
-local character = player.Character
-if not character then return warn("No character") end
-
-local humanoid = character:FindFirstChild("Humanoid")
-local seat = humanoid and humanoid.SeatPart
-if not seat then return warn("You are not sitting in a car") end
-
 -- Find car
 local car = seat.Parent
 while car and car ~= workspace do
@@ -107,29 +16,26 @@ end
 if not car or car == workspace then return warn("Could not find car model") end
 print("Found car:", car.Name)
 
--- Wait for race to start (remove this if not needed)
-local replicatedStorage = game:GetService("ReplicatedStorage")
-local raceActive = replicatedStorage:FindFirstChild("RaceActive")  -- CHANGE THIS NAME to match your game
-if raceActive and raceActive:IsA("BoolValue") then
-    print("Waiting for race to start...")
-    repeat task.wait(0.5) until raceActive.Value == true
-    print("Race started!")
-else
-    print("No race detection found – teleporting anyway (might cause pause)")
-end
-
 -- Ensure PrimaryPart
 if not car.PrimaryPart then
     local part = car:FindFirstChildWhichIsA("BasePart")
-    if part then car.PrimaryPart = part else return error("No BasePart") end
+    if part then 
+        car.PrimaryPart = part 
+    else 
+        return error("Car has no BasePart") 
+    end
 end
 
--- Detect checkpoint folder
-local checkpointsFolder = workspace:FindFirstChild("HighwayRace_solo_ServerCheckpoints") or workspace:FindFirstChild("HighwayRace_ServerCheckpoints")
-if not checkpointsFolder then return warn("No checkpoints folder found") end
+-- Find checkpoint folder (try both solo and normal)
+local checkpointsFolder = workspace:FindFirstChild("HighwayRace_solo_ServerCheckpoints")
+                         or workspace:FindFirstChild("HighwayRace_ServerCheckpoints")
+if not checkpointsFolder then
+    return warn("No checkpoints folder found – race may not have started yet.\n" ..
+                "Wait a few seconds and run again.")
+end
 print("Using:", checkpointsFolder.Name)
 
--- Build checkpoint list 1..27 + FinishLine
+-- Build checkpoint list 1..27 + finish
 local checkpoints = {}
 for i = 1, 27 do
     local cp = checkpointsFolder:FindFirstChild(tostring(i))
@@ -138,18 +44,31 @@ end
 local finish = checkpointsFolder:FindFirstChild("ServerFinishLine")
 if finish then table.insert(checkpoints, finish) end
 
--- Teleport function
+if #checkpoints == 0 then
+    return warn("No checkpoint parts found in folder – maybe race is over?")
+end
+
+-- Teleport function with error protection
 local function teleport(target)
-    local raise = 5   -- Increased to avoid ground collision
+    local raise = 5   -- high enough to clear ground
     if target:IsA("BasePart") then
-        car:SetPrimaryPartCFrame(target.CFrame + Vector3.new(0, raise, 0))
-        print("Teleported to", target.Name)
+        local success, err = pcall(function()
+            car:SetPrimaryPartCFrame(target.CFrame + Vector3.new(0, raise, 0))
+        end)
+        if success then
+            print("Teleported to", target.Name)
+        else
+            warn("Failed to teleport to", target.Name, ":", err)
+        end
+    else
+        warn("Invalid target:", target)
     end
 end
 
--- Start teleporting
+-- Do the teleport loop
 for _, cp in ipairs(checkpoints) do
     teleport(cp)
-    task.wait(1)
+    task.wait(0.5)   -- give the game time to register each step
 end
-print("✅ Done")
+
+print("✅ All checkpoints visited!")
