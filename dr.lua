@@ -559,7 +559,7 @@ LagServerTab:CreateToggle({
 })
 
 -- Create 50 individual toggles
-for i = 1, 10 do
+for i = 1, 100 do
     LagServerTab:CreateToggle({
         Name = "Spammer #" .. i,
         CurrentValue = false,
