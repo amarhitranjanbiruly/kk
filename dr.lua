@@ -543,19 +543,19 @@ LagServerTab:CreateToggle({
 
         if Value then
             enableSequence = task.spawn(function()
-                for i = 1, 50 do
+                for i = 1, 20 do
                     if not masterToggleValue then break end
                     SpammerEnabled[i] = true
                     StartSpammer(i)
                     pcall(function()
                         Rayfield:SetToggle("SpammerToggle_" .. i, true)
                     end)
-                    if i < 50 then task.wait(0.45) end
+                    if i < 20 then task.wait(0.45) end
                 end
                 enableSequence = nil
             end)
         else
-            for i = 1, 50 do
+            for i = 1, 20 do
                 SpammerEnabled[i] = false
                 StartSpammer(i)
                 pcall(function()
@@ -567,7 +567,7 @@ LagServerTab:CreateToggle({
 })
 
 -- Create 50 individual toggles
-for i = 1, 50 do
+for i = 1, 20 do
     LagServerTab:CreateToggle({
         Name = "Spammer #" .. i,
         CurrentValue = false,
@@ -641,19 +641,19 @@ UltimateLagServerTab:CreateToggle({
 
         if Value then
             ultimateEnableSequence = task.spawn(function()
-                for i = 1, 50 do
+                for i = 1, 20 do
                     if not ultimateMasterToggleValue then break end
                     UltimateSpammerEnabled[i] = true
                     StartUltimateSpammer(i)
                     pcall(function()
                         Rayfield:SetToggle("UltimateSpammerToggle_" .. i, true)
                     end)
-                    if i < 50 then task.wait(0.45) end
+                    if i < 20 then task.wait(0.45) end
                 end
                 ultimateEnableSequence = nil
             end)
         else
-            for i = 1, 50 do
+            for i = 1, 20 do
                 UltimateSpammerEnabled[i] = false
                 StartUltimateSpammer(i)
                 pcall(function()
@@ -665,7 +665,7 @@ UltimateLagServerTab:CreateToggle({
 })
 
 -- Create 50 individual toggles for ultimate spammers
-for i = 1, 50 do
+for i = 1, 20 do
     UltimateLagServerTab:CreateToggle({
         Name = "Ultimate Spammer #" .. i,
         CurrentValue = false,
