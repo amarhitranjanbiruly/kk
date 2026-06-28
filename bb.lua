@@ -1,475 +1,874 @@
---// Services
+--brutal
+
+-- Rayfield UI Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local LocalPlayer = game:GetService("Players").LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 
---// Theme Configuration
-local Theme = {
-    Main = Color3.fromRGB(15, 15, 15),
-    Sidebar = Color3.fromRGB(20, 20, 20),
-    Accent = Color3.fromRGB(0, 170, 255),
-    Text = Color3.fromRGB(240, 240, 240),
-    SubText = Color3.fromRGB(180, 180, 180),
-    Row = Color3.fromRGB(25, 25, 25),
-    TopBar = Color3.fromRGB(25, 25, 25)
+-- Remote cache
+local RemoteCache = {
+    CharactersFolder = ReplicatedStorage:WaitForChild("Characters"),
+    RemotesFolder = ReplicatedStorage:WaitForChild("Remotes"),
+    AbilitiesRemote = ReplicatedStorage.Remotes.Abilities.Ability,
+    CombatRemote = ReplicatedStorage.Remotes.Combat.Action,
+    DashRemote = ReplicatedStorage.Remotes.Character.Dash
 }
 
---// ReplicatedStorage Paths (adjust if needed)
-local Settings = ReplicatedStorage:WaitForChild("Settings")
-local Multipliers = Settings:WaitForChild("Multipliers")
-local Cooldowns = Settings:WaitForChild("Cooldowns")
-local Toggles = Settings:WaitForChild("Toggles")
+-- Window
+local Window = Rayfield:CreateWindow({
+    Name = "Ultimate Battlegrounds",
+    LoadingTitle = "Loading Features...",
+    LoadingSubtitle = "by elton",
+    ConfigurationSaving = { Enabled = false }
+})
 
---// GUI Parent (works in both executor and normal Roblox)
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "UltimateSettingsGUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true
+-- Main Tab
+local Tab = Window:CreateTab("Main", 4483362458)
 
-local parentSuccess, parentContainer = pcall(function()
-    return (gethui and gethui()) or game:GetService("CoreGui")
-end)
-if not parentSuccess or not parentContainer then
-    parentContainer = LocalPlayer:WaitForChild("PlayerGui")
-end
-ScreenGui.Parent = parentContainer
+-- ==================== LAG SERVER V2 (ABILITY SPAM) + ANTI-LAG ====================
+local AbilitySpamEnabled = false
+local AbilitySpamLoop
+local MobRemote = ReplicatedStorage.Remotes.Character.ChangeCharacter
+local IgnoreFriends = true
+local AntiLagEnabled = true
+local AutoMobEnabled = true
 
---// Main Frame
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 650, 0, 450)
-MainFrame.Position = UDim2.new(0.5, -325, 0.5, -225)
-MainFrame.BackgroundColor3 = Theme.Main
-MainFrame.BorderSizePixel = 0
-MainFrame.ClipsDescendants = true
-MainFrame.Parent = ScreenGui
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 6)
-
---// Top Bar (drag area)
-local TopBar = Instance.new("Frame")
-TopBar.Size = UDim2.new(1, 0, 0, 30)
-TopBar.BackgroundColor3 = Theme.TopBar
-TopBar.BorderSizePixel = 0
-TopBar.Parent = MainFrame
-Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 6)
-
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -40, 1, 0)
-TitleLabel.Position = UDim2.new(0, 12, 0, 0)
-TitleLabel.Text = "Ultimate Settings Configuration"
-TitleLabel.TextColor3 = Theme.Text
-TitleLabel.Font = Enum.Font.SourceSansBold
-TitleLabel.TextSize = 14
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = TopBar
-
-local MinimizeButton = Instance.new("TextButton")
-MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
-MinimizeButton.Position = UDim2.new(1, -30, 0, 0)
-MinimizeButton.BackgroundTransparency = 1
-MinimizeButton.Text = "−"
-MinimizeButton.TextColor3 = Theme.SubText
-MinimizeButton.Font = Enum.Font.SourceSansBold
-MinimizeButton.TextSize = 18
-MinimizeButton.ZIndex = 5
-MinimizeButton.Parent = TopBar
-
---// Invisible drag button covering the TopBar (captures clicks on title area)
-local DragButton = Instance.new("TextButton")
-DragButton.Size = UDim2.new(1, -35, 1, 0)
-DragButton.Position = UDim2.new(0, 0, 0, 0)
-DragButton.BackgroundTransparency = 1
-DragButton.Text = ""
-DragButton.ZIndex = 10
-DragButton.Parent = TopBar
-
---// Window Content (hidden when minimized)
-local WindowContent = Instance.new("Frame")
-WindowContent.Size = UDim2.new(1, 0, 1, -30)
-WindowContent.Position = UDim2.new(0, 0, 0, 30)
-WindowContent.BackgroundTransparency = 1
-WindowContent.Parent = MainFrame
-
---// Sidebar
-local Sidebar = Instance.new("Frame")
-Sidebar.Size = UDim2.new(0, 160, 1, 0)
-Sidebar.BackgroundColor3 = Theme.Sidebar
-Sidebar.BorderSizePixel = 0
-Sidebar.Parent = WindowContent
-Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 6)
-
-local SideLayout = Instance.new("UIListLayout")
-SideLayout.Parent = Sidebar
-SideLayout.Padding = UDim.new(0, 2)
-
---// Content Container (right side)
-local ContentContainer = Instance.new("Frame")
-ContentContainer.Size = UDim2.new(1, -165, 1, -10)
-ContentContainer.Position = UDim2.new(0, 165, 0, 5)
-ContentContainer.BackgroundTransparency = 1
-ContentContainer.Parent = WindowContent
-
---// Pages storage
-local Pages = {}
-
---// Helper: Update ScrollingFrame CanvasSize based on content
-local function SetupScrollingFrame(page)
-    local layout = page:FindFirstChildWhichIsA("UIListLayout")
-    if not layout then return end
-
-    -- Make scroll bar more visible
-    page.ScrollBarThickness = 8
-
-    local function updateCanvas()
-        local contentHeight = layout.AbsoluteContentSize.Y
-        page.CanvasSize = UDim2.new(0, 0, 0, contentHeight + 20) -- add small padding at bottom
-    end
-
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas)
-    -- Initial update (after all controls have been added, call this once more)
-    updateCanvas()
-
-    -- Also update when children are added/removed (redundant but safe)
-    page.ChildAdded:Connect(updateCanvas)
-    page.ChildRemoved:Connect(updateCanvas)
+local function GetCurrentCharacter()
+    return LocalPlayer.Data.Character.Value
 end
 
---// Helper: Create a new page (tab)
-local function CreatePage(name)
-    local Page = Instance.new("ScrollingFrame")
-    Page.Size = UDim2.new(1, 0, 1, 0)
-    Page.BackgroundTransparency = 1
-    Page.ScrollBarThickness = 2
-    Page.Visible = false
-    Page.Parent = ContentContainer
-
-    local Layout = Instance.new("UIListLayout")
-    Layout.Parent = Page
-    Layout.Padding = UDim.new(0, 5)
-    Layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-    local TabButton = Instance.new("TextButton")
-    TabButton.Size = UDim2.new(1, 0, 0, 40)
-    TabButton.BackgroundTransparency = 1
-    TabButton.Text = "  " .. name
-    TabButton.TextColor3 = Theme.SubText
-    TabButton.Font = Enum.Font.SourceSansSemibold
-    TabButton.TextSize = 16
-    TabButton.TextXAlignment = Enum.TextXAlignment.Left
-    TabButton.Parent = Sidebar
-
-    TabButton.MouseButton1Click:Connect(function()
-        for _, p in pairs(Pages) do p.Visible = false end
-        for _, b in pairs(Sidebar:GetChildren()) do
-            if b:IsA("TextButton") then b.TextColor3 = Theme.SubText end
+local function FindNearestPlayer()
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local nearest, dist = nil, math.huge
+    for _, p in pairs(Players:GetPlayers()) do
+        if p == LocalPlayer then continue end
+        if not p.Character then continue end
+        if IgnoreFriends and p:IsFriendsWith(LocalPlayer.UserId) then
+            continue
         end
-        Page.Visible = true
-        TabButton.TextColor3 = Theme.Accent
-        -- Refresh canvas after switching (in case layout changed)
-        SetupScrollingFrame(Page)
-    end)
-
-    Pages[name] = Page
-    return Page
+        local tr = p.Character:FindFirstChild("HumanoidRootPart")
+        local th = p.Character:FindFirstChild("Humanoid")
+        if tr and th and (th:GetAttribute("Health") or th.Health) > 0 then
+            local d = (hrp.Position - tr.Position).Magnitude
+            if d < dist then
+                dist = d
+                nearest = p
+            end
+        end
+    end
+    return nearest
 end
 
---// Helper: Create a toggle switch
-local function CreateToggle(parent, name, valuePath)
-    local Row = Instance.new("Frame")
-    Row.Size = UDim2.new(0, 460, 0, 40)
-    Row.BackgroundColor3 = Theme.Row
-    Row.Parent = parent
-    Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 4)
+local function EnsureMob()
+    if not AutoMobEnabled then return end
+    if GetCurrentCharacter() ~= "Mob" then
+        MobRemote:FireServer("Mob")
+        task.wait(0.1)
+    end
+end
 
-    local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, -60, 1, 0)
-    Label.Position = UDim2.new(0, 12, 0, 0)
-    Label.Text = name
-    Label.TextColor3 = Theme.Text
-    Label.Font = Enum.Font.SourceSans
-    Label.TextSize = 15
-    Label.BackgroundTransparency = 1
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Row
+local function UseAbility(abilityIndex)
+    local charName = GetCurrentCharacter()
+    local ability = ReplicatedStorage.Characters[charName].Abilities[abilityIndex]
+    if not ability then return end
 
-    local Switch = Instance.new("TextButton")
-    Switch.Size = UDim2.new(0, 36, 0, 18)
-    Switch.Position = UDim2.new(1, -48, 0.5, -9)
-    Switch.BackgroundColor3 = valuePath.Value and Theme.Accent or Color3.fromRGB(60, 60, 60)
-    Switch.Text = ""
-    Switch.Parent = Row
-    Instance.new("UICorner", Switch).CornerRadius = UDim.new(1, 0)
+    local target = FindNearestPlayer()
+    if not target then return end
 
-    local Dot = Instance.new("Frame")
-    Dot.Size = UDim2.new(0, 14, 0, 14)
-    Dot.Position = valuePath.Value and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
-    Dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Dot.Parent = Switch
-    Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
+    local targetChar = target.Character
+    local targetCF = targetChar and targetChar.HumanoidRootPart and targetChar.HumanoidRootPart.CFrame
+    if not targetCF then return end
 
-    Switch.MouseButton1Click:Connect(function()
-        valuePath.Value = not valuePath.Value
-        local goal = valuePath.Value and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
-        TweenService:Create(Dot, TweenInfo.new(0.2), {Position = goal}):Play()
-        TweenService:Create(Switch, TweenInfo.new(0.2), {BackgroundColor3 = valuePath.Value and Theme.Accent or Color3.fromRGB(60, 60, 60)}):Play()
+    pcall(function()
+        RemoteCache.AbilitiesRemote:FireServer(ability, 9000000)
+
+        local actions = {377,380,383,384,385,387,389}
+        for i = 1, 7 do
+            local args = {
+                ability,
+                charName .. ":Abilities:" .. abilityIndex,
+                i,
+                9000000,
+                {
+                    HitboxCFrames = {targetCF, targetCF},
+                    BestHitCharacter = targetChar,
+                    HitCharacters = {targetChar},
+                    Ignore = i > 2 and { ActionNumber1 = { targetChar } } or {},
+                    DeathInfo = {},
+                    BlockedCharacters = {},
+                    HitInfo = {
+                        IsFacing = not (i == 1 or i == 2),
+                        IsInFront = i <= 2,
+                        Blocked = i > 2 and false or nil
+                    },
+                    ServerTime = tick(),
+                    Actions = i > 2 and { ActionNumber1 = {} } or {},
+                    FromCFrame = targetCF
+                },
+                "Action" .. actions[i],
+                i == 2 and 0.1 or nil
+            }
+            RemoteCache.CombatRemote:FireServer(unpack(args))
+        end
     end)
 end
 
---// Helper: Create a slider
---// Helper: Create a slider (now with integer-only values)
-local function CreateSlider(parent, name, valuePath, isMovement)
-    local sliderMin = 0
-    local currentVal = 0
-
-    if isMovement then
-        local walkSpeed = Multipliers:FindFirstChild("WalkSpeed")
-        if walkSpeed then currentVal = math.round(walkSpeed.Value) end  -- round to integer
-    elseif valuePath then
-        currentVal = math.round(valuePath.Value)  -- round to integer
+-- UI Elements for Lag Server V2
+Tab:CreateToggle({
+    Name = "Ignore Friends",
+    CurrentValue = true,
+    Flag = "IgnoreFriendsToggle",
+    Callback = function(Value)
+        IgnoreFriends = Value
     end
+})
 
-    local sliderMax = math.max(1000, currentVal)
-    local absoluteMax = 100000
-
-    local Row = Instance.new("Frame")
-    Row.Size = UDim2.new(0, 460, 0, 50)
-    Row.BackgroundColor3 = Theme.Row
-    Row.Active = true
-    Row.Parent = parent
-    Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 4)
-
-    local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, -100, 0, 25)
-    Label.Position = UDim2.new(0, 12, 0, 5)
-    Label.Text = name
-    Label.TextColor3 = Theme.Text
-    Label.Font = Enum.Font.SourceSans
-    Label.TextSize = 14
-    Label.BackgroundTransparency = 1
-    Label.TextXAlignment = Enum.TextXAlignment.Left
-    Label.Parent = Row
-
-    local SliderBg = Instance.new("Frame")
-    SliderBg.Size = UDim2.new(1, -120, 0, 4)
-    SliderBg.Position = UDim2.new(0, 12, 1, -12)
-    SliderBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    SliderBg.BorderSizePixel = 0
-    SliderBg.Active = true
-    SliderBg.Parent = Row
-    Instance.new("UICorner", SliderBg).CornerRadius = UDim.new(0, 2)
-
-    local Fill = Instance.new("Frame")
-    Fill.BackgroundColor3 = Theme.Accent
-    Fill.BorderSizePixel = 0
-    Fill.Parent = SliderBg
-    Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 2)
-
-    local Spinbox = Instance.new("TextBox")
-    Spinbox.Size = UDim2.new(0, 60, 0, 24)
-    Spinbox.Position = UDim2.new(1, -72, 0.5, -12)
-    Spinbox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    Spinbox.Text = tostring(currentVal)
-    Spinbox.TextColor3 = Theme.Accent
-    Spinbox.Font = Enum.Font.Code
-    Spinbox.TextSize = 13
-    Spinbox.ClearTextOnFocus = false
-    Spinbox.Parent = Row
-    Instance.new("UICorner", Spinbox).CornerRadius = UDim.new(0, 3)
-
-    -- Helper: round to nearest integer
-    local function round(num)
-        return math.floor(num + 0.5)
+Tab:CreateToggle({
+    Name = "Anti-Lag Protection",
+    CurrentValue = true,
+    Flag = "AntiLagToggle",
+    Callback = function(Value)
+        AntiLagEnabled = Value
     end
+})
 
-    local function UpdateVisuals(value)
-        local intValue = round(value)
-        Spinbox.Text = tostring(intValue)
-        local percent = (intValue - sliderMin) / (sliderMax - sliderMin)
-        percent = math.clamp(percent, 0, 1)
-        Fill.Size = UDim2.new(percent, 0, 1, 0)
+Tab:CreateToggle({
+    Name = "Auto Switch to Mob (On by default)",
+    CurrentValue = true,
+    Flag = "AutoMobToggle",
+    Callback = function(Value)
+        AutoMobEnabled = Value
     end
+})
 
-    local function SetValue(rawValue)
-        local num = tonumber(rawValue)
-        if not num then return end
-        num = round(math.clamp(num, 0, absoluteMax))   -- round to integer
-
-        if isMovement then
-            local walk = Multipliers:FindFirstChild("WalkSpeed")
-            local run = Multipliers:FindFirstChild("RunSpeed")
-            if walk then walk.Value = num end
-            if run then run.Value = num end
-        elseif valuePath then
-            valuePath.Value = num
-        end
-
-        if num > sliderMax then
-            sliderMax = num
-        end
-        UpdateVisuals(num)
-    end
-
-    local function UpdateFromMouse()
-        if SliderBg.AbsoluteSize.X == 0 then return end
-        local mousePos = UserInputService:GetMouseLocation()
-        local relativeX = math.clamp(mousePos.X - SliderBg.AbsolutePosition.X, 0, SliderBg.AbsoluteSize.X)
-        local percent = relativeX / SliderBg.AbsoluteSize.X
-        local newVal = sliderMin + (sliderMax - sliderMin) * percent
-        SetValue(newVal)
-    end
-
-    local dragging = false
-    SliderBg.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            UpdateFromMouse()
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            UpdateFromMouse()
-        end
-    end)
-
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-
-    Spinbox.FocusLost:Connect(function()
-        local val = tonumber(Spinbox.Text)
-        if val then
-            SetValue(val)
+Tab:CreateToggle({
+    Name = "Lag Server V2 (Ability Spam)",
+    CurrentValue = false,
+    Flag = "LagServerV2Toggle",
+    Callback = function(Value)
+        AbilitySpamEnabled = Value
+        if Value then
+            EnsureMob()
+            AbilitySpamLoop = task.spawn(function()
+                local abilityIndices = { "1", "2", "3", "4" }
+                while AbilitySpamEnabled do
+                    for _, idx in ipairs(abilityIndices) do
+                        if not AbilitySpamEnabled then break end
+                        UseAbility(idx)
+                        if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
+                        if AbilitySpamEnabled then
+                            local c = GetCurrentCharacter()
+                            pcall(function()
+                                local ability = ReplicatedStorage.Characters[c].Abilities[idx]
+                                if ability then
+                                    ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ability)
+                                end
+                            end)
+                        end
+                        if AntiLagEnabled then task.wait(0.05) end
+                    end
+                end
+            end)
         else
-            local current = isMovement and (Multipliers.WalkSpeed and Multipliers.WalkSpeed.Value) or (valuePath and valuePath.Value) or 0
-            Spinbox.Text = tostring(round(current))
+            if AbilitySpamLoop then task.cancel(AbilitySpamLoop) end
+        end
+    end
+})
+
+-- ==================== ULTIMATE LAG MODE (SPAM ULTIMATES) ====================
+local UltimateSpamEnabled = false
+local UltimateSpamLoop
+
+local function UseUltimate(ultimateIndex)
+    local charName = GetCurrentCharacter()
+    local ultimate = ReplicatedStorage.Characters[charName].Ultimates[ultimateIndex]
+    if not ultimate then return end
+
+    local target = FindNearestPlayer()
+    if not target then return end
+
+    local targetChar = target.Character
+    local targetCF = targetChar and targetChar.HumanoidRootPart and targetChar.HumanoidRootPart.CFrame
+    if not targetCF then return end
+
+    pcall(function()
+        RemoteCache.AbilitiesRemote:FireServer(ultimate, 9000000)
+
+        local actions = {377,380,383,384,385,387,389}
+        for i = 1, 7 do
+            local args = {
+                ultimate,
+                charName .. ":Ultimates:" .. ultimateIndex,
+                i,
+                9000000,
+                {
+                    HitboxCFrames = {targetCF, targetCF},
+                    BestHitCharacter = targetChar,
+                    HitCharacters = {targetChar},
+                    Ignore = i > 2 and { ActionNumber1 = { targetChar } } or {},
+                    DeathInfo = {},
+                    BlockedCharacters = {},
+                    HitInfo = {
+                        IsFacing = not (i == 1 or i == 2),
+                        IsInFront = i <= 2,
+                        Blocked = i > 2 and false or nil
+                    },
+                    ServerTime = tick(),
+                    Actions = i > 2 and { ActionNumber1 = {} } or {},
+                    FromCFrame = targetCF
+                },
+                "Action" .. actions[i],
+                i == 2 and 0.1 or nil
+            }
+            RemoteCache.CombatRemote:FireServer(unpack(args))
         end
     end)
-
-    UpdateVisuals(currentVal)
 end
 
---// ========== CREATE PAGES AND POPULATE THEM ==========
+Tab:CreateToggle({
+    Name = "Ultimate Lag Mode (Spam Ultimates)",
+    CurrentValue = false,
+    Flag = "UltimateLagToggle",
+    Callback = function(Value)
+        UltimateSpamEnabled = Value
+        if Value then
+            EnsureMob()
+            UltimateSpamLoop = task.spawn(function()
+                local ultimateIndices = { "1", "2", "3", "4" }
+                while UltimateSpamEnabled do
+                    for _, idx in ipairs(ultimateIndices) do
+                        if not UltimateSpamEnabled then break end
+                        UseUltimate(idx)
+                        if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
+                        if UltimateSpamEnabled then
+                            local c = GetCurrentCharacter()
+                            pcall(function()
+                                local ultimate = ReplicatedStorage.Characters[c].Ultimates[idx]
+                                if ultimate then
+                                    ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ultimate)
+                                end
+                            end)
+                        end
+                        if AntiLagEnabled then task.wait(0.05) end
+                    end
+                end
+            end)
+        else
+            if UltimateSpamLoop then task.cancel(UltimateSpamLoop) end
+        end
+    end
+})
 
--- Multipliers page
-local MultPage = CreatePage("Multipliers")
-CreateSlider(MultPage, "Melee Damage", Multipliers.MeleeDamage)
-CreateSlider(MultPage, "Ragdoll Power", Multipliers.RagdollPower)
-CreateSlider(MultPage, "Melee Speed", Multipliers.MeleeSpeed)
-CreateSlider(MultPage, "Dash Speed", Multipliers.DashSpeed)
-CreateSlider(MultPage, "Ultimate Timer", Multipliers.UltimateTimer)
-CreateSlider(MultPage, "Movement Speed (Walk & Run)", nil, true)
-CreateSlider(MultPage, "Jump Height", Multipliers.JumpHeight)
-SetupScrollingFrame(MultPage)
-
--- Multipliers Extra page
-local ExtraMultPage = CreatePage("Multipliers Extra")
-CreateSlider(ExtraMultPage, "Knockback Power", Multipliers.KnockbackPower)
-CreateSlider(ExtraMultPage, "Ability Damage", Multipliers.AbilityDamage)
-CreateSlider(ExtraMultPage, "Avatar Scale", Multipliers.AvatarScale)
-CreateSlider(ExtraMultPage, "Charge Rate", Multipliers.ChargeRate)
-CreateSlider(ExtraMultPage, "Health", Multipliers.Health)
-CreateSlider(ExtraMultPage, "Ragdoll Timer", Multipliers.RagdollTimer)
-CreateSlider(ExtraMultPage, "Regen Rate", Multipliers.RegenRate)
-CreateSlider(ExtraMultPage, "Ultimate Damage", Multipliers.UltimateDamage)
-SetupScrollingFrame(ExtraMultPage)
-
--- Cooldowns page
-local CoolPage = CreatePage("Cooldowns")
-CreateSlider(CoolPage, "Melee Cooldown", Cooldowns.Melee)
-CreateSlider(CoolPage, "Dash Cooldown", Cooldowns.Dash)
-CreateSlider(CoolPage, "Ability Cooldown", Cooldowns.Ability)
-CreateSlider(CoolPage, "Evasive Cooldown", Cooldowns.Evasive)
-CreateSlider(CoolPage, "Wall Combo Cooldown", Cooldowns.WallCombo)
-SetupScrollingFrame(CoolPage)
-
--- Combat Toggles page
-local CombatPage = CreatePage("Combat Toggles")
-CreateToggle(CombatPage, "Endless", Toggles.Endless)
-CreateToggle(CombatPage, "Multi Use Cutscenes", Toggles.MultiUseCutscenes)
-CreateToggle(CombatPage, "No Stun On Miss", Toggles.NoStunOnMiss)
-CreateToggle(CombatPage, "No Jump Fatigue", Toggles.NoJumpFatigue)
-CreateToggle(CombatPage, "Disable Hit Stun", Toggles.DisableHitStun)
-SetupScrollingFrame(CombatPage)
-
--- Extra Toggles page
-local ExtraPage = CreatePage("Extra Toggles")
-local ToggleList = {
-    "AllowAllPackages", "DisableAbilities", "DisableBlocking", "DisableCombatTimer",
-    "DisableDashing", "DisableEvasives", "DisableFinishers", "DisableIntros",
-    "DisableMelee", "DisableRunning", "DisableSpawnShield", "DisableUltimates",
-    "InstantTransformation", "FriendlyFire", "KickOnDeath", "NoJoining",
-    "NoResetOnChange", "NoRespawning", "NoSlowdowns", "PreventChanges", "UsableWithoutCharge"
+-- ==================== WALLCOMBO ====================
+local WallComboConfig = {
+    Enabled = false,
+    Method = "Method 1",
+    IgnoreFriends = false,
+    RenderName = "WallComboV2",
+    coreModule = nil
 }
-for _, name in pairs(ToggleList) do
-    CreateToggle(ExtraPage, name, Toggles:WaitForChild(name))
+
+local function Setidentity()
+    pcall(function()
+        setthreadidentity(5)
+        setthreadcontext(5)
+    end)
 end
-SetupScrollingFrame(ExtraPage)
 
---// Minimize / Restore
-local isMinimized = false
-local regularSize = UDim2.new(0, 650, 0, 450)
-local minimizedSize = UDim2.new(0, 650, 0, 30)
+task.spawn(function()
+    Setidentity()
+    local success, result = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Core"))
+    end)
+    if success and result then
+        WallComboConfig.coreModule = result
+    end
+end)
 
-MinimizeButton.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    if isMinimized then
-        MinimizeButton.Text = "+"
-        WindowContent.Visible = false
-        TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = minimizedSize}):Play()
-    else
-        MinimizeButton.Text = "−"
-        TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = regularSize}):Play()
-        task.wait(0.2)
-        WindowContent.Visible = true
-        -- Refresh canvas for visible page after restore
-        for _, page in pairs(Pages) do
-            if page.Visible then SetupScrollingFrame(page) end
+Tab:CreateToggle({
+    Name = "Ignore Friends (WallCombo)",
+    CurrentValue = false,
+    Flag = "WallComboIgnoreFriends",
+    Callback = function(Value)
+        WallComboConfig.IgnoreFriends = Value
+    end
+})
+
+local function getCurrentCharacterName()
+    return LocalPlayer.Data.Character.Value
+end
+
+local function characterHasWallCombo(name)
+    local folder = ReplicatedStorage.Characters:FindFirstChild(name)
+    return folder and folder:FindFirstChild("WallCombo") ~= nil
+end
+
+local function findNearestPlayerTarget()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local nearest, shortest = nil, math.huge
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            if WallComboConfig.IgnoreFriends and LocalPlayer:IsFriendsWith(p.UserId) then continue end
+            local tr = p.Character:FindFirstChild("HumanoidRootPart")
+            local th = p.Character:FindFirstChildOfClass("Humanoid")
+            if tr and th and (th:GetAttribute("Health") or th.Health) > 0 then
+                local d = (hrp.Position - tr.Position).Magnitude
+                if d < shortest and d < 900000 then
+                    shortest = d
+                    nearest = p
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+local function getWallPosition()
+    local char = LocalPlayer.Character
+    if not char then return Vector3.new(0, 0, 0) end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return Vector3.new(0, 0, 0) end
+    return hrp.Position + (hrp.CFrame.LookVector * 5)
+end
+
+local function getRootCFrame()
+    local char = LocalPlayer.Character
+    if not char then return CFrame.new() end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    return hrp and hrp.CFrame or CFrame.new()
+end
+
+local function wallcomboMethod1()
+    local currentChar = getCurrentCharacterName()
+    if not characterHasWallCombo(currentChar) then return false end
+    local targetPlayer = findNearestPlayerTarget()
+    if not targetPlayer or not targetPlayer.Character then return false end
+    local localChar = LocalPlayer.Character
+    if not localChar then return false end
+
+    pcall(function()
+        local abilityObject = ReplicatedStorage.Characters[currentChar].WallCombo
+        local actionId = math.random(1000, 9999) + math.random(1000, 5000)
+        local serverTime = tick()
+        local wallPos = getWallPosition()
+        local fromCF = getRootCFrame()
+
+        RemoteCache.AbilitiesRemote:FireServer(abilityObject, actionId, nil, targetPlayer.Character, wallPos)
+
+        for i = 1, 4 do
+            local args = {
+                abilityObject,
+                "Characters:" .. currentChar .. ":WallCombo",
+                i,
+                actionId,
+                {
+                    HitboxCFrames = i == 1 and {} or { CFrame.new(wallPos) },
+                    BestHitCharacter = targetPlayer.Character,
+                    HitCharacters = { targetPlayer.Character },
+                    Ignore = (i >= 2 and i <= 3) and { ActionNumber1 = { targetPlayer.Character } } or {},
+                    DeathInfo = {},
+                    BlockedCharacters = {},
+                    HitInfo = { IsFacing = true, IsInFront = true, Blocked = false },
+                    ServerTime = serverTime,
+                    Actions = i == 4 and {
+                        ActionNumber1 = {
+                            [targetPlayer.Name] = {
+                                StartCFrameStr = tostring(CFrame.new(targetPlayer.Character.HumanoidRootPart.Position)),
+                                ImpulseVelocity = Vector3.new(-67499, 150000, 307),
+                                AbilityName = "WallCombo",
+                                RotVelocityStr = "0,0,0",
+                                VelocityStr = "0,0,0",
+                                Gravity = 200000,
+                                RotImpulseVelocity = Vector3.new(8977, -5293, 6185),
+                                Seed = math.random(100000000, 999999999),
+                                LookVectorStr = tostring(fromCF.LookVector),
+                                Duration = 2
+                            }
+                        }
+                    } or {},
+                    FromCFrame = fromCF
+                },
+                "Action" .. math.random(1000, 9999),
+                i == 4 and 0.1 or nil
+            }
+            RemoteCache.CombatRemote:FireServer(unpack(args))
+        end
+    end)
+    return true
+end
+
+local function executeWallCombo()
+    if not WallComboConfig.Enabled then return end
+    if WallComboConfig.Method == "Method 1" then
+        wallcomboMethod1()
+    end
+end
+
+Tab:CreateToggle({
+    Name = "Spam WallCombo",
+    CurrentValue = false,
+    Flag = "WallComboToggle",
+    Callback = function(Value)
+        WallComboConfig.Enabled = Value
+        Setidentity()
+        if Value then
+            RunService:BindToRenderStep(WallComboConfig.RenderName, Enum.RenderPriority.Input.Value, executeWallCombo)
+        else
+            RunService:UnbindFromRenderStep(WallComboConfig.RenderName)
+        end
+    end
+})
+
+-- ==================== SPEED HACK ====================
+local speed_amnt = 5
+local speed_enabled = false
+
+local function getChar()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    return char:WaitForChild("HumanoidRootPart"), char:WaitForChild("Humanoid")
+end
+
+RunService:BindToRenderStep("speed_loop", 2000, function(dt)
+    if speed_enabled then
+        local hrp, hum = getChar()
+        if hrp and hum then
+            hrp.CFrame = hrp.CFrame + (hum.MoveDirection * dt * 5 * speed_amnt)
         end
     end
 end)
 
---// ========== DRAG: Uses invisible overlay button ==========
-local isDragging = false
-local dragStartMouse = nil
-local dragStartFramePos = nil
+local SpeedTab = Window:CreateTab("Speed", 4483362458)
+SpeedTab:CreateToggle({
+    Name = "Enable Speed",
+    CurrentValue = false,
+    Callback = function(Value)
+        speed_enabled = Value
+    end,
+})
+SpeedTab:CreateSlider({
+    Name = "Speed Multiplier",
+    Range = { 1, 50 },
+    Increment = 1,
+    CurrentValue = 5,
+    Callback = function(Value)
+        speed_amnt = Value
+    end,
+})
 
-DragButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        isDragging = true
-        dragStartMouse = UserInputService:GetMouseLocation()
-        dragStartFramePos = MainFrame.Position
+-- ==================== LAGSERVER TAB – 50 INDEPENDENT SPAMMERS (ABILITIES) ====================
+local LagServerTab = Window:CreateTab("LagServer", 4483362458)
+
+-- Slider for extra ability spammers (master controlled)
+local abilitySpammerCount = 50
+LagServerTab:CreateSlider({
+    Name = "Number of Extra Ability Spammers",
+    Range = {1, 10000},
+    Increment = 1,
+    CurrentValue = 50,
+    Flag = "AbilitySpammerCount",
+    Callback = function(Value)
+        abilitySpammerCount = Value
     end
-end)
+})
 
-UserInputService.InputChanged:Connect(function(input)
-    if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local delta = UserInputService:GetMouseLocation() - dragStartMouse
-        MainFrame.Position = UDim2.new(
-            dragStartFramePos.X.Scale,
-            dragStartFramePos.X.Offset + delta.X,
-            dragStartFramePos.Y.Scale,
-            dragStartFramePos.Y.Offset + delta.Y
-        )
+-- NEW: Slider for start delay (seconds)
+local abilityStartDelay = 0.45
+LagServerTab:CreateSlider({
+    Name = "Start Delay (seconds)",
+    Range = {0.01, 2},
+    Increment = 0.01,
+    CurrentValue = 0.45,
+    Flag = "AbilityStartDelay",
+    Callback = function(Value)
+        abilityStartDelay = Value
     end
-end)
+})
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        isDragging = false
-        dragStartMouse = nil
-        dragStartFramePos = nil
+-- 50 manual toggles (unchanged)
+local SpammerEnabled = {}
+local SpammerThreads = {}
+
+local function SpammerLoop(index)
+    local abilityIndices = { "1", "2", "3", "4" }
+    while SpammerEnabled[index] do
+        for _, idx in ipairs(abilityIndices) do
+            if not SpammerEnabled[index] then break end
+            UseAbility(idx)
+            if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
+            if SpammerEnabled[index] then
+                local c = GetCurrentCharacter()
+                pcall(function()
+                    local ability = ReplicatedStorage.Characters[c].Abilities[idx]
+                    if ability then
+                        ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ability)
+                    end
+                end)
+            end
+            if AntiLagEnabled then task.wait(0.05) end
+        end
     end
-end)
+end
 
---// Open/Close with RightControl
-Pages["Multipliers"].Visible = true
-UserInputService.InputBegan:Connect(function(i, gameProcessed)
+local function StartSpammer(index)
+    if SpammerThreads[index] then
+        task.cancel(SpammerThreads[index])
+        SpammerThreads[index] = nil
+    end
+    if SpammerEnabled[index] then
+        EnsureMob()
+        SpammerThreads[index] = task.spawn(SpammerLoop, index)
+    end
+end
+
+for i = 1, 50 do
+    LagServerTab:CreateToggle({
+        Name = "Spammer #" .. i,
+        CurrentValue = false,
+        Flag = "SpammerToggle_" .. i,
+        Callback = function(Value)
+            SpammerEnabled[i] = Value
+            StartSpammer(i)
+        end
+    })
+end
+
+-- Extra spammers (controlled by master, does NOT touch manual toggles)
+local extraAbilitySpamming = false
+local extraAbilityThreads = {}
+
+local function ExtraAbilitySpammer()
+    local abilityIndices = { "1", "2", "3", "4" }
+    while extraAbilitySpamming do
+        for _, idx in ipairs(abilityIndices) do
+            if not extraAbilitySpamming then break end
+            UseAbility(idx)
+            if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
+            if extraAbilitySpamming then
+                local c = GetCurrentCharacter()
+                pcall(function()
+                    local ability = ReplicatedStorage.Characters[c].Abilities[idx]
+                    if ability then
+                        ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ability)
+                    end
+                end)
+            end
+            if AntiLagEnabled then task.wait(0.05) end
+        end
+    end
+end
+
+local masterToggleValue = false
+local enableSequence = nil
+
+LagServerTab:CreateToggle({
+    Name = "Master Control (Extra Ability Spammers)",
+    CurrentValue = false,
+    Flag = "MasterSpammerToggle",
+    Callback = function(Value)
+        masterToggleValue = Value
+
+        if enableSequence then
+            task.cancel(enableSequence)
+            enableSequence = nil
+        end
+
+        if Value then
+            EnsureMob()
+            extraAbilitySpamming = true
+            enableSequence = task.spawn(function()
+                for i = 1, abilitySpammerCount do
+                    if not masterToggleValue then break end
+                    local thread = task.spawn(ExtraAbilitySpammer)
+                    table.insert(extraAbilityThreads, thread)
+                    task.wait(abilityStartDelay)  -- use the slider value
+                end
+                enableSequence = nil
+            end)
+        else
+            extraAbilitySpamming = false
+            for _, thread in ipairs(extraAbilityThreads) do
+                task.cancel(thread)
+            end
+            extraAbilityThreads = {}
+        end
+    end
+})
+
+-- ==================== ULTIMATE LAGSERVER TAB – 50 INDEPENDENT ULTIMATE SPAMMERS ====================
+local UltimateLagServerTab = Window:CreateTab("UltimateLagServer", 4483362458)
+
+-- Slider for extra ultimate spammers
+local ultimateSpammerCount = 50
+UltimateLagServerTab:CreateSlider({
+    Name = "Number of Extra Ultimate Spammers",
+    Range = {1, 10000},
+    Increment = 1,
+    CurrentValue = 50,
+    Flag = "UltimateSpammerCount",
+    Callback = function(Value)
+        ultimateSpammerCount = Value
+    end
+})
+
+-- NEW: Slider for start delay (seconds)
+local ultimateStartDelay = 0.45
+UltimateLagServerTab:CreateSlider({
+    Name = "Start Delay (seconds)",
+    Range = {0.01, 2},
+    Increment = 0.01,
+    CurrentValue = 0.45,
+    Flag = "UltimateStartDelay",
+    Callback = function(Value)
+        ultimateStartDelay = Value
+    end
+})
+
+local UltimateSpammerEnabled = {}
+local UltimateSpammerThreads = {}
+
+local function UltimateSpammerLoop(index)
+    local ultimateIndices = { "1", "2", "3", "4" }
+    while UltimateSpammerEnabled[index] do
+        for _, idx in ipairs(ultimateIndices) do
+            if not UltimateSpammerEnabled[index] then break end
+            UseUltimate(idx)
+            if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
+            if UltimateSpammerEnabled[index] then
+                local c = GetCurrentCharacter()
+                pcall(function()
+                    local ultimate = ReplicatedStorage.Characters[c].Ultimates[idx]
+                    if ultimate then
+                        ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ultimate)
+                    end
+                end)
+            end
+            if AntiLagEnabled then task.wait(0.05) end
+        end
+    end
+end
+
+local function StartUltimateSpammer(index)
+    if UltimateSpammerThreads[index] then
+        task.cancel(UltimateSpammerThreads[index])
+        UltimateSpammerThreads[index] = nil
+    end
+    if UltimateSpammerEnabled[index] then
+        EnsureMob()
+        UltimateSpammerThreads[index] = task.spawn(UltimateSpammerLoop, index)
+    end
+end
+
+for i = 1, 50 do
+    UltimateLagServerTab:CreateToggle({
+        Name = "Ultimate Spammer #" .. i,
+        CurrentValue = false,
+        Flag = "UltimateSpammerToggle_" .. i,
+        Callback = function(Value)
+            UltimateSpammerEnabled[i] = Value
+            StartUltimateSpammer(i)
+        end
+    })
+end
+
+-- Extra ultimate spammers (master controlled)
+local extraUltimateSpamming = false
+local extraUltimateThreads = {}
+
+local function ExtraUltimateSpammer()
+    local ultimateIndices = { "1", "2", "3", "4" }
+    while extraUltimateSpamming do
+        for _, idx in ipairs(ultimateIndices) do
+            if not extraUltimateSpamming then break end
+            UseUltimate(idx)
+            if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
+            if extraUltimateSpamming then
+                local c = GetCurrentCharacter()
+                pcall(function()
+                    local ultimate = ReplicatedStorage.Characters[c].Ultimates[idx]
+                    if ultimate then
+                        ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ultimate)
+                    end
+                end)
+            end
+            if AntiLagEnabled then task.wait(0.05) end
+        end
+    end
+end
+
+local ultimateMasterToggleValue = false
+local ultimateEnableSequence = nil
+
+UltimateLagServerTab:CreateToggle({
+    Name = "Master Control (Extra Ultimate Spammers)",
+    CurrentValue = false,
+    Flag = "MasterUltimateSpammerToggle",
+    Callback = function(Value)
+        ultimateMasterToggleValue = Value
+
+        if ultimateEnableSequence then
+            task.cancel(ultimateEnableSequence)
+            ultimateEnableSequence = nil
+        end
+
+        if Value then
+            EnsureMob()
+            extraUltimateSpamming = true
+            ultimateEnableSequence = task.spawn(function()
+                for i = 1, ultimateSpammerCount do
+                    if not ultimateMasterToggleValue then break end
+                    local thread = task.spawn(ExtraUltimateSpammer)
+                    table.insert(extraUltimateThreads, thread)
+                    task.wait(ultimateStartDelay)  -- use the slider value
+                end
+                ultimateEnableSequence = nil
+            end)
+        else
+            extraUltimateSpamming = false
+            for _, thread in ipairs(extraUltimateThreads) do
+                task.cancel(thread)
+            end
+            extraUltimateThreads = {}
+        end
+    end
+})
+
+-- ==================== NEW: WALLCOMBO SPAMMER (EXTRA, MASTER CONTROLLED) ====================
+local WallComboSpamTab = Window:CreateTab("WallComboSpam", 4483362458)
+
+-- Slider for number of wall combo spammers
+local wallComboSpammerCount = 50
+WallComboSpamTab:CreateSlider({
+    Name = "Number of WallCombo Spammers",
+    Range = {1, 10000},
+    Increment = 1,
+    CurrentValue = 50,
+    Flag = "WallComboSpammerCount",
+    Callback = function(Value)
+        wallComboSpammerCount = Value
+    end
+})
+
+-- Slider for start delay (seconds)
+local wallComboStartDelay = 0.45
+WallComboSpamTab:CreateSlider({
+    Name = "Start Delay (seconds)",
+    Range = {0.01, 2},
+    Increment = 0.01,
+    CurrentValue = 0.45,
+    Flag = "WallComboStartDelay",
+    Callback = function(Value)
+        wallComboStartDelay = Value
+    end
+})
+
+-- Master toggle and threads
+local wallComboSpamEnabled = false
+local wallComboSpamThreads = {}
+local wallComboEnableSequence = nil
+
+-- The loop function for each thread
+local function WallComboSpammerLoop()
+    while wallComboSpamEnabled do
+        wallcomboMethod1()
+        -- Small wait to prevent overloading, you can adjust
+        task.wait(0.05)
+    end
+end
+
+WallComboSpamTab:CreateToggle({
+    Name = "Master Control (Extra WallCombo Spammers)",
+    CurrentValue = false,
+    Flag = "MasterWallComboSpammerToggle",
+    Callback = function(Value)
+        wallComboSpamEnabled = Value
+
+        if wallComboEnableSequence then
+            task.cancel(wallComboEnableSequence)
+            wallComboEnableSequence = nil
+        end
+
+        if Value then
+            -- No need to switch to Mob, WallCombo works with any character that has it
+            -- but you may optionally ensure mob? Not required.
+            wallComboSpamEnabled = true
+            wallComboEnableSequence = task.spawn(function()
+                for i = 1, wallComboSpammerCount do
+                    if not wallComboSpamEnabled then break end
+                    local thread = task.spawn(WallComboSpammerLoop)
+                    table.insert(wallComboSpamThreads, thread)
+                    task.wait(wallComboStartDelay)
+                end
+                wallComboEnableSequence = nil
+            end)
+        else
+            wallComboSpamEnabled = false
+            for _, thread in ipairs(wallComboSpamThreads) do
+                task.cancel(thread)
+            end
+            wallComboSpamThreads = {}
+        end
+    end
+})
+
+-- Optional: Add a keybind for the wall combo master toggle (e.g., W)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
-    if i.KeyCode == Enum.KeyCode.RightControl then
-        MainFrame.Visible = not MainFrame.Visible
+    if input.KeyCode == Enum.KeyCode.W then
+        local current = Rayfield:GetToggle("MasterWallComboSpammerToggle")
+        if current ~= nil then
+            Rayfield:SetToggle("MasterWallComboSpammerToggle", not current)
+            Rayfield:Notify({
+                Title = "Keybind",
+                Content = "Toggled extra WallCombo spammers " .. (not current and "ON" or "OFF"),
+                Duration = 2
+            })
+        end
     end
 end)
+
+-- ==================== KEYBINDS ====================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.L then
+        local newValue = not masterToggleValue
+        Rayfield:SetToggle("MasterSpammerToggle", newValue)
+        Rayfield:Notify({
+            Title = "Keybind",
+            Content = "Toggled extra ability spammers " .. (newValue and "ON" or "OFF"),
+            Duration = 2
+        })
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.U then
+        local newValue = not ultimateMasterToggleValue
+        Rayfield:SetToggle("MasterUltimateSpammerToggle", newValue)
+        Rayfield:Notify({
+            Title = "Keybind",
+            Content = "Toggled extra ultimate spammers " .. (newValue and "ON" or "OFF"),
+            Duration = 2
+        })
+    end
+end)
+
+-- ==================== NOTIFICATION ====================
+Rayfield:Notify({
+    Title = "Script Ready",
+    Content = "All features loaded. Press L for extra ability spammers, U for extra ultimate spammers, W for extra WallCombo spammers.",
+    Duration = 5
+})
+
+-- Load configuration
+Rayfield:LoadConfiguration()
