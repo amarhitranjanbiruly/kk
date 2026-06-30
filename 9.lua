@@ -1374,8 +1374,24 @@ local Emotes = {
     { name = "give rose", id = 92556966002208, icon = "rbxthumb://type=Asset&id=92556966002208&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
     
 	{ name = "die dead", id = 123681448623553, icon = "rbxthumb://type=Asset&id=123681448623553&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
+ 
+    { name = "aura floot/fly", id = 114469314321726, icon = "rbxthumb://type=Asset&id=114469314321726&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
+    
+	{ name = "aura floot/fly", id = 128041362107499, icon = "rbxthumb://type=Asset&id=128041362107499&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
+     
+    { name = "airoplane floot/fly", id = 94839021364946, icon = "rbxthumb://type=Asset&id=94839021364946&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
 
-}
+    { name = "serus side jump", id = 92020567702309, icon = "rbxthumb://type=Asset&id=92020567702309&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
+     
+    { name = "rate dance", id = 85325020630427, icon = "rbxthumb://type=Asset&id=85325020630427&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
+ 
+    { name = "Aura Sleeping/fly", id = 91007194298467, icon = "rbxthumb://type=Asset&id=91007194298467&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
+    
+	{ name = "Aura Sleeping/fly", id = 118614349722003, icon = "rbxthumb://type=Asset&id=118614349722003&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
+  
+    { name = "Aura Sleeping/fly", id = 126280737065994, icon = "rbxthumb://type=Asset&id=126280737065994&w=150&h=150", price = 0, lastupdated = 1663281651, sort = {} },
+
+}   
 
 
 
