@@ -1,1 +1,872 @@
-print("Hello World!")
+
+--// Cache
+local pcall, getgenv, next, Vector2, mathclamp, type = pcall, getgenv, next, Vector2.new, math.clamp, type
+local tonumber = tonumber
+
+--// Mouse Movement Compatibility Check
+local mousemoverel = mousemoverel or (Input and Input.MouseMove) or (mouse_over_rel)
+
+--// Preventing Multiple Processes
+pcall(function()
+    if getgenv().Aimbot and getgenv().Aimbot.Functions then
+        getgenv().Aimbot.Functions:Exit()
+    end
+end)
+
+--// Environment Setup
+getgenv().Aimbot = {}
+local Environment = getgenv().Aimbot
+
+--// Services
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+--// Variables
+local Typing, Running, ServiceConnections = false, false, {}
+local MenuVisible = true
+local ScreenGui = nil
+local FriendListCache = {}
+
+--// Script Settings
+Environment.Settings = {
+    Enabled                = true,
+    TeamCheck              = false,
+    AliveCheck             = true,
+    WallCheck              = false,
+    IgnoreFriends          = false,
+    MaxDistance            = 1000,      -- 0 = unlimited
+
+    UseMouseMovement       = true,
+    Sensitivity            = 10,        -- 10 = instant, 1 = very smooth (supports decimals)
+    Prediction             = 0.1,       -- Seconds ahead to aim (0-1 typical, supports decimals)
+
+    TriggerKey             = "MouseButton1",
+    MenuKey                = "Insert",
+    Toggle                 = false,
+    LockPart               = "Head"
+}
+
+Environment.FOVSettings = {
+    Enabled = true,
+    Visible = true,
+    Amount = 80,
+    Color = Color3.fromRGB(255, 255, 255),
+    LockedColor = Color3.fromRGB(255, 70, 70),
+    Transparency = 0.5,
+    Sides = 60,
+    Thickness = 1,
+    Filled = false
+}
+
+Environment.Visuals = {
+    MenuColor = Color3.fromRGB(45, 45, 45),
+    AccentColor = Color3.fromRGB(0, 150, 255),
+    TextColor = Color3.fromRGB(255, 255, 255)
+}
+
+--// FOV Circle (safe init)
+local FOVCircle = pcall(function() return Drawing.new("Circle") end) and Drawing.new("Circle") or nil
+Environment.FOVCircle = FOVCircle
+
+--// Notification System
+local function Notify(title, text, duration)
+    if not ScreenGui then return end
+    local NotificationFrame = Instance.new("Frame")
+    NotificationFrame.Size = UDim2.new(0, 250, 0, 60)
+    NotificationFrame.Position = UDim2.new(1, 10, 0.8, 0)
+    NotificationFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    NotificationFrame.BorderSizePixel = 0
+    NotificationFrame.Parent = ScreenGui
+
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 6)
+    UICorner.Parent = NotificationFrame
+
+    local TTitle = Instance.new("TextLabel")
+    TTitle.Size = UDim2.new(1, -10, 0, 25)
+    TTitle.Position = UDim2.new(0, 10, 0, 5)
+    TTitle.BackgroundTransparency = 1
+    TTitle.Text = title
+    TTitle.TextColor3 = Environment.Visuals.AccentColor
+    TTitle.Font = Enum.Font.SourceSansBold
+    TTitle.TextSize = 16
+    TTitle.TextXAlignment = Enum.TextXAlignment.Left
+    TTitle.Parent = NotificationFrame
+
+    local TDesc = Instance.new("TextLabel")
+    TDesc.Size = UDim2.new(1, -10, 0, 25)
+    TDesc.Position = UDim2.new(0, 10, 0, 25)
+    TDesc.BackgroundTransparency = 1
+    TDesc.Text = text
+    TDesc.TextColor3 = Color3.fromRGB(200, 200, 200)
+    TDesc.Font = Enum.Font.SourceSans
+    TDesc.TextSize = 14
+    TDesc.TextXAlignment = Enum.TextXAlignment.Left
+    TDesc.Parent = NotificationFrame
+
+    NotificationFrame:TweenPosition(UDim2.new(1, -260, 0.8, 0), "Out", "Quart", 0.5)
+    task.wait(duration or 3)
+    NotificationFrame:TweenPosition(UDim2.new(1, 10, 0.8, 0), "In", "Quart", 0.5)
+    task.delay(0.5, function() NotificationFrame:Destroy() end)
+end
+
+--// Refresh Friends List
+local function RefreshFriendList()
+    task.spawn(function()
+        local success, result = pcall(function()
+            return LocalPlayer:GetFriendsAsync()
+        end)
+        if not success or not result then
+            Notify("Friends Error", "Could not fetch friend list", 2)
+            return
+        end
+
+        FriendListCache = {}
+        local count = 0
+        for _, friendData in result do
+            if friendData and friendData.Id then
+                FriendListCache[friendData.Id] = true
+                count = count + 1
+            end
+        end
+        Notify("Friends Updated", "Loaded " .. count .. " friend(s)", 2)
+    end)
+end
+
+--// Utility Functions
+local function CancelLock()
+    Environment.Locked = nil
+    Environment.LockedPart = nil
+    Environment.PredictedPosition = nil
+    if FOVCircle then
+        FOVCircle.Color = Environment.FOVSettings.Color
+    end
+end
+
+local function IsVisible(part)
+    if not part then return false end
+    local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+    if not onScreen then return false end
+
+    if Environment.Settings.WallCheck then
+        local origin = Camera.CFrame.Position
+        local direction = part.Position - origin
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+        local result = workspace:Raycast(origin, direction, raycastParams)
+        if result and not result.Instance:IsDescendantOf(part.Parent) then
+            return false
+        end
+    end
+    return true
+end
+
+--// Performance: throttle target acquisition to every 2 frames
+local frameCounter = 0
+local function GetClosestPlayer()
+    frameCounter = frameCounter + 1
+    if frameCounter % 2 ~= 0 and Running then
+        -- Use previous target if still valid (reduces work)
+        if Environment.Locked and Environment.LockedPart and Environment.LockedPart.Parent and Environment.Locked.Character then
+            if IsVisible(Environment.LockedPart) then
+                return
+            end
+        end
+    end
+
+    local closestTarget = nil
+    local closestPart = nil
+    local closestPredictedPos = nil
+    local closestDistance = (Environment.FOVSettings.Enabled and Environment.FOVSettings.Amount or 2000)
+
+    local targetBone = Environment.Settings.LockPart
+    if targetBone == "Neck" then targetBone = "UpperTorso" end
+    if targetBone == "Chest" then targetBone = "LowerTorso" end
+
+    -- Local position for distance check (safe)
+    local localPos = nil
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        localPos = char.HumanoidRootPart.Position
+    end
+
+    local maxRange = Environment.Settings.MaxDistance
+    local useRange = (maxRange > 0) and (localPos ~= nil)
+    local prediction = Environment.Settings.Prediction
+
+    for _, v in next, Players:GetPlayers() do
+        if v == LocalPlayer then continue end
+        local character = v.Character
+        if not character then continue end
+
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if not humanoid then continue end
+
+        -- Team check with nil safety
+        if Environment.Settings.TeamCheck then
+            local myTeam = LocalPlayer.Team
+            local theirTeam = v.Team
+            if myTeam and theirTeam and myTeam == theirTeam then
+                continue
+            elseif not myTeam and not theirTeam then
+                continue
+            end
+        end
+
+        if Environment.Settings.AliveCheck and humanoid.Health <= 0 then continue end
+        if Environment.Settings.IgnoreFriends and FriendListCache[v.UserId] then continue end
+
+        local part = character:FindFirstChild(targetBone) or character:FindFirstChild("HumanoidRootPart")
+        if part and IsVisible(part) then
+            -- Calculate predicted position
+            local predictedPos = part.Position
+            if prediction > 0 and part.Velocity then
+                predictedPos = part.Position + part.Velocity * prediction
+            end
+
+            if useRange then
+                local distance = (predictedPos - localPos).Magnitude
+                if distance > maxRange then
+                    continue
+                end
+            end
+
+            local screenPoint, onScreen = Camera:WorldToViewportPoint(predictedPos)
+            if not onScreen then continue end
+
+            local mouseLocation = UserInputService:GetMouseLocation()
+            local distanceFromMouse = (Vector2(mouseLocation.X, mouseLocation.Y) - Vector2(screenPoint.X, screenPoint.Y)).Magnitude
+
+            if distanceFromMouse < closestDistance then
+                closestTarget = v
+                closestPart = part
+                closestPredictedPos = predictedPos
+                closestDistance = distanceFromMouse
+            end
+        end
+    end
+
+    Environment.Locked = closestTarget
+    Environment.LockedPart = closestPart
+    Environment.PredictedPosition = closestPredictedPos
+end
+
+--// Main Execution Logic
+local function Load()
+    ServiceConnections.RenderSteppedConnection = RunService.RenderStepped:Connect(function()
+        -- FOV circle update
+        if FOVCircle and Environment.FOVSettings.Enabled and Environment.Settings.Enabled then
+            FOVCircle.Radius = Environment.FOVSettings.Amount
+            FOVCircle.Thickness = Environment.FOVSettings.Thickness
+            FOVCircle.Filled = Environment.FOVSettings.Filled
+            FOVCircle.NumSides = Environment.FOVSettings.Sides
+            FOVCircle.Color = Environment.FOVSettings.Color
+            FOVCircle.Transparency = Environment.FOVSettings.Transparency
+            FOVCircle.Visible = Environment.FOVSettings.Visible
+            FOVCircle.Position = UserInputService:GetMouseLocation()
+        elseif FOVCircle then
+            FOVCircle.Visible = false
+        end
+
+        if Running and Environment.Settings.Enabled then
+            GetClosestPlayer()
+
+            if Environment.Locked and Environment.LockedPart then
+                -- Use predicted position if available, else current position
+                local aimPosition = Environment.PredictedPosition or Environment.LockedPart.Position
+                local screenPoint = Camera:WorldToViewportPoint(aimPosition)
+                local mouseLocation = UserInputService:GetMouseLocation()
+
+                if Environment.Settings.UseMouseMovement then
+                    -- Improved mouse movement with deadzone
+                    local deltaX = screenPoint.X - mouseLocation.X
+                    local deltaY = screenPoint.Y - mouseLocation.Y
+
+                    local factor = math.clamp(Environment.Settings.Sensitivity / 10, 0.05, 1)
+                    local moveX = deltaX * factor
+                    local moveY = deltaY * factor
+
+                    -- Deadzone to eliminate micro-jitter
+                    if math.abs(moveX) < 0.5 then moveX = 0 end
+                    if math.abs(moveY) < 0.5 then moveY = 0 end
+
+                    if mousemoverel then
+                        mousemoverel(moveX, moveY)
+                    end
+                else
+                    -- Camera lock (perfect accuracy)
+                    Camera.CFrame = CFrame.new(Camera.CFrame.Position, aimPosition)
+                end
+
+                if FOVCircle then
+                    FOVCircle.Color = Environment.FOVSettings.LockedColor
+                end
+            else
+                CancelLock()
+            end
+        end
+    end)
+
+    ServiceConnections.TypingStarted = UserInputService.TextBoxFocused:Connect(function() Typing = true end)
+    ServiceConnections.TypingEnded = UserInputService.TextBoxFocusReleased:Connect(function() Typing = false end)
+
+    ServiceConnections.InputBegan = UserInputService.InputBegan:Connect(function(Input)
+        if Typing then return end
+
+        if Input.KeyCode.Name == Environment.Settings.MenuKey then
+            MenuVisible = not MenuVisible
+            if ScreenGui then ScreenGui.Enabled = MenuVisible end
+        end
+
+        local triggerKey = Environment.Settings.TriggerKey
+        local isTrigger = (Input.UserInputType.Name == triggerKey or Input.KeyCode.Name == triggerKey)
+
+        if isTrigger then
+            if Environment.Settings.Toggle then
+                Running = not Running
+                if not Running then CancelLock() end
+            else
+                Running = true
+            end
+        end
+    end)
+
+    ServiceConnections.InputEnded = UserInputService.InputEnded:Connect(function(Input)
+        if Typing or Environment.Settings.Toggle then return end
+
+        local triggerKey = Environment.Settings.TriggerKey
+        local isTrigger = (Input.UserInputType.Name == triggerKey or Input.KeyCode.Name == triggerKey)
+
+        if isTrigger then
+            Running = false
+            CancelLock()
+        end
+    end)
+end
+
+--// GUI Creation
+local function CreateGUI()
+    local success, parent = pcall(function()
+        return (syn and syn.protected_gui and syn.protected_gui()) or (gethui and gethui()) or game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+    end)
+    if not success then
+        warn("Failed to get GUI parent")
+        return
+    end
+
+    ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "AimbotV2"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = parent
+    _G.AimbotGUI = ScreenGui
+
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Size = UDim2.new(0, 320, 0, 560)
+    MainFrame.Position = UDim2.new(0.5, -160, 0.5, -280)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Active = true
+    MainFrame.Draggable = true
+    MainFrame.Parent = ScreenGui
+
+    local UICorner_Main = Instance.new("UICorner")
+    UICorner_Main.CornerRadius = UDim.new(0, 8)
+    UICorner_Main.Parent = MainFrame
+
+    local TitleBar = Instance.new("Frame")
+    TitleBar.Size = UDim2.new(1, 0, 0, 35)
+    TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    TitleBar.BorderSizePixel = 0
+    TitleBar.Parent = MainFrame
+
+    local UICorner_Title = Instance.new("UICorner")
+    UICorner_Title.CornerRadius = UDim.new(0, 8)
+    UICorner_Title.Parent = TitleBar
+
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(1, -60, 1, 0)
+    Title.Position = UDim2.new(0, 15, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.Text = "GEMINI AIMBOT v2.3"
+    Title.TextColor3 = Environment.Visuals.AccentColor
+    Title.Font = Enum.Font.SourceSansBold
+    Title.TextSize = 18
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = TitleBar
+
+    local MinBtn = Instance.new("TextButton")
+    MinBtn.Size = UDim2.new(0, 35, 1, 0)
+    MinBtn.Position = UDim2.new(1, -35, 0, 0)
+    MinBtn.BackgroundTransparency = 1
+    MinBtn.Text = "_"
+    MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MinBtn.Font = Enum.Font.SourceSansBold
+    MinBtn.TextSize = 20
+    MinBtn.Parent = TitleBar
+    MinBtn.MouseButton1Click:Connect(function()
+        MenuVisible = false
+        ScreenGui.Enabled = false
+        Notify("Menu Hidden", "Press " .. Environment.Settings.MenuKey .. " to show again", 2)
+    end)
+
+    local ScrollingFrame = Instance.new("ScrollingFrame")
+    ScrollingFrame.Size = UDim2.new(1, 0, 1, -35)
+    ScrollingFrame.Position = UDim2.new(0, 0, 0, 35)
+    ScrollingFrame.BackgroundTransparency = 1
+    ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    ScrollingFrame.ScrollBarThickness = 4
+    ScrollingFrame.Parent = MainFrame
+
+    local Layout = Instance.new("UIListLayout")
+    Layout.Parent = ScrollingFrame
+    Layout.Padding = UDim.new(0, 6)
+    Layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+    local Padding = Instance.new("UIPadding")
+    Padding.PaddingTop = UDim.new(0, 10)
+    Padding.Parent = ScrollingFrame
+
+    --// UI Components
+    local function CreateToggle(name, settingTable, settingKey)
+        local Frame = Instance.new("Frame")
+        Frame.Size = UDim2.new(0, 290, 0, 35)
+        Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Frame.BorderSizePixel = 0
+        Frame.Parent = ScrollingFrame
+        Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 5)
+
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(1, -50, 1, 0)
+        Label.Position = UDim2.new(0, 10, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.Text = name
+        Label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        Label.Font = Enum.Font.SourceSans
+        Label.TextSize = 16
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = Frame
+
+        local Button = Instance.new("TextButton")
+        Button.Size = UDim2.new(0, 45, 0, 22)
+        Button.Position = UDim2.new(1, -55, 0.5, -11)
+        Button.BackgroundColor3 = settingTable[settingKey] and Environment.Visuals.AccentColor or Color3.fromRGB(60, 60, 60)
+        Button.Text = ""
+        Button.Parent = Frame
+        Instance.new("UICorner", Button).CornerRadius = UDim.new(1, 0)
+
+        local Dot = Instance.new("Frame")
+        Dot.Size = UDim2.new(0, 16, 0, 16)
+        Dot.Position = settingTable[settingKey] and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)
+        Dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        Dot.Parent = Button
+        Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
+
+        Button.MouseButton1Click:Connect(function()
+            settingTable[settingKey] = not settingTable[settingKey]
+            local goal = settingTable[settingKey] and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)
+            TweenService:Create(Dot, TweenInfo.new(0.2), {Position = goal}):Play()
+            TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = settingTable[settingKey] and Environment.Visuals.AccentColor or Color3.fromRGB(60, 60, 60)}):Play()
+
+            if name == "Ignore Friends" and settingTable[settingKey] and next(FriendListCache) == nil then
+                RefreshFriendList()
+            end
+        end)
+    end
+
+    local function CreateSlider(name, settingTable, settingKey, min, max, precise)
+        local Frame = Instance.new("Frame")
+        Frame.Size = UDim2.new(0, 290, 0, 45)
+        Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Frame.BorderSizePixel = 0
+        Frame.Parent = ScrollingFrame
+        Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 5)
+
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(1, -20, 0, 20)
+        Label.Position = UDim2.new(0, 10, 0, 5)
+        Label.BackgroundTransparency = 1
+        Label.Text = name .. ": " .. tostring(settingTable[settingKey])
+        Label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        Label.Font = Enum.Font.SourceSans
+        Label.TextSize = 14
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = Frame
+
+        local SliderBack = Instance.new("Frame")
+        SliderBack.Size = UDim2.new(1, -20, 0, 6)
+        SliderBack.Position = UDim2.new(0, 10, 1, -12)
+        SliderBack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        SliderBack.BorderSizePixel = 0
+        SliderBack.Parent = Frame
+        Instance.new("UICorner", SliderBack)
+
+        local SliderFill = Instance.new("Frame")
+        SliderFill.BackgroundColor3 = Environment.Visuals.AccentColor
+        SliderFill.BorderSizePixel = 0
+        SliderFill.Parent = SliderBack
+        Instance.new("UICorner", SliderFill)
+
+        local function UpdateSliderValue(rawValue)
+            local clamped = math.clamp(rawValue, min, max)
+            local val = precise and (math.floor(clamped * 10) / 10) or math.floor(clamped)
+            settingTable[settingKey] = val
+            Label.Text = name .. ": " .. tostring(val)
+            local percent = (val - min) / (max - min)
+            SliderFill.Size = UDim2.new(percent, 0, 1, 0)
+            return val
+        end
+
+        UpdateSliderValue(settingTable[settingKey])
+
+        local function UpdateFromMouse()
+            local mousePos = UserInputService:GetMouseLocation()
+            local relativeX = math.clamp(mousePos.X - SliderBack.AbsolutePosition.X, 0, SliderBack.AbsoluteSize.X)
+            local percent = relativeX / SliderBack.AbsoluteSize.X
+            UpdateSliderValue(min + (max - min) * percent)
+        end
+
+        local dragging = false
+        SliderBack.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                UpdateFromMouse()
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                UpdateFromMouse()
+            end
+        end)
+
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+    end
+
+    local function CreateSliderWithSpinbox(name, settingTable, settingKey, sliderMin, sliderMax, absoluteMax, unit, precise)
+        unit = unit or "studs"
+        precise = precise or false
+        local Frame = Instance.new("Frame")
+        Frame.Size = UDim2.new(0, 290, 0, 55)
+        Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Frame.BorderSizePixel = 0
+        Frame.Parent = ScrollingFrame
+        Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 5)
+
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(1, -20, 0, 20)
+        Label.Position = UDim2.new(0, 10, 0, 5)
+        Label.BackgroundTransparency = 1
+        Label.Text = name .. " (" .. unit .. ")"
+        Label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        Label.Font = Enum.Font.SourceSans
+        Label.TextSize = 14
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = Frame
+
+        local SliderBack = Instance.new("Frame")
+        SliderBack.Size = UDim2.new(1, -100, 0, 6)
+        SliderBack.Position = UDim2.new(0, 10, 1, -18)
+        SliderBack.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        SliderBack.BorderSizePixel = 0
+        SliderBack.Parent = Frame
+        Instance.new("UICorner", SliderBack)
+
+        local SliderFill = Instance.new("Frame")
+        SliderFill.BackgroundColor3 = Environment.Visuals.AccentColor
+        SliderFill.BorderSizePixel = 0
+        SliderFill.Parent = SliderBack
+        Instance.new("UICorner", SliderFill)
+
+        local SpinBox = Instance.new("TextBox")
+        SpinBox.Size = UDim2.new(0, 80, 0, 28)
+        SpinBox.Position = UDim2.new(1, -90, 1, -30)
+        SpinBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        SpinBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+        SpinBox.Font = Enum.Font.SourceSans
+        SpinBox.TextSize = 14
+        SpinBox.Text = tostring(settingTable[settingKey])
+        SpinBox.PlaceholderText = "Value"
+        SpinBox.ClearTextOnFocus = false
+        SpinBox.Parent = Frame
+        Instance.new("UICorner", SpinBox).CornerRadius = UDim.new(0, 4)
+
+        local function UpdateVisuals(value)
+            local displayValue = (precise and math.floor(value * 10) / 10) or value
+            SpinBox.Text = tostring(displayValue)
+            local percent = 0
+            if value <= sliderMax then
+                percent = (value - sliderMin) / (sliderMax - sliderMin)
+            else
+                percent = 1
+            end
+            SliderFill.Size = UDim2.new(math.clamp(percent, 0, 1), 0, 1, 0)
+        end
+
+        local function SetValue(rawValue)
+            local num = tonumber(rawValue)
+            if not num then return end
+            num = math.clamp(num, 0, absoluteMax)
+            if precise then
+                num = math.floor(num * 10) / 10  -- one decimal place
+            else
+                num = math.floor(num)
+            end
+            settingTable[settingKey] = num
+            UpdateVisuals(num)
+            Notify(name, "Set to " .. num .. " " .. unit, 1)
+        end
+
+        local function UpdateFromMouse()
+            local mousePos = UserInputService:GetMouseLocation()
+            local relativeX = math.clamp(mousePos.X - SliderBack.AbsolutePosition.X, 0, SliderBack.AbsoluteSize.X)
+            local percent = relativeX / SliderBack.AbsoluteSize.X
+            local newVal = sliderMin + (sliderMax - sliderMin) * percent
+            if precise then
+                newVal = math.floor(newVal * 10) / 10
+            else
+                newVal = math.floor(newVal + 0.5)
+            end
+            settingTable[settingKey] = newVal
+            UpdateVisuals(newVal)
+        end
+
+        local dragging = false
+        SliderBack.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                UpdateFromMouse()
+            end
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                UpdateFromMouse()
+            end
+        end)
+
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+
+        SpinBox.FocusLost:Connect(function(enterPressed)
+            local val = tonumber(SpinBox.Text)
+            if val then
+                SetValue(val)
+            else
+                SpinBox.Text = tostring(settingTable[settingKey])
+            end
+        end)
+
+        UpdateVisuals(settingTable[settingKey])
+    end
+
+    local function CreateKeybind(name, settingTable, settingKey)
+        local Frame = Instance.new("Frame")
+        Frame.Size = UDim2.new(0, 290, 0, 35)
+        Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Frame.BorderSizePixel = 0
+        Frame.Parent = ScrollingFrame
+        Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 5)
+
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(1, -100, 1, 0)
+        Label.Position = UDim2.new(0, 10, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.Text = name
+        Label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        Label.Font = Enum.Font.SourceSans
+        Label.TextSize = 16
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = Frame
+
+        local BindBtn = Instance.new("TextButton")
+        BindBtn.Size = UDim2.new(0, 80, 0, 25)
+        BindBtn.Position = UDim2.new(1, -90, 0.5, -12)
+        BindBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        BindBtn.Text = settingTable[settingKey]
+        BindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        BindBtn.Font = Enum.Font.SourceSansBold
+        BindBtn.TextSize = 14
+        BindBtn.Parent = Frame
+        Instance.new("UICorner", BindBtn)
+
+        BindBtn.MouseButton1Click:Connect(function()
+            BindBtn.Text = "..."
+            local connection
+            connection = UserInputService.InputBegan:Connect(function(input)
+                local key = nil
+                if input.UserInputType == Enum.UserInputType.Keyboard then
+                    key = input.KeyCode.Name
+                elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    key = "MouseButton1"
+                elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    key = "MouseButton2"
+                end
+                if key then
+                    settingTable[settingKey] = key
+                    BindBtn.Text = key
+                    connection:Disconnect()
+                end
+            end)
+        end)
+    end
+
+    local function CreateLockPartDropdown()
+        local Options = {"Head", "Neck", "Chest"}
+        local Frame = Instance.new("Frame")
+        Frame.Size = UDim2.new(0, 290, 0, 35)
+        Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Frame.BorderSizePixel = 0
+        Frame.Parent = ScrollingFrame
+        Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 5)
+
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(1, -110, 1, 0)
+        Label.Position = UDim2.new(0, 10, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.Text = "Lock Part"
+        Label.TextColor3 = Color3.fromRGB(220, 220, 220)
+        Label.Font = Enum.Font.SourceSans
+        Label.TextSize = 16
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        Label.Parent = Frame
+
+        local SelectionBtn = Instance.new("TextButton")
+        SelectionBtn.Size = UDim2.new(0, 90, 0, 25)
+        SelectionBtn.Position = UDim2.new(1, -100, 0.5, -12)
+        SelectionBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        SelectionBtn.Text = Environment.Settings.LockPart
+        SelectionBtn.TextColor3 = Environment.Visuals.AccentColor
+        SelectionBtn.Font = Enum.Font.SourceSansBold
+        SelectionBtn.TextSize = 14
+        SelectionBtn.Parent = Frame
+        Instance.new("UICorner", SelectionBtn)
+
+        SelectionBtn.MouseButton1Click:Connect(function()
+            local currentIndex = 1
+            for i, v in ipairs(Options) do
+                if v == Environment.Settings.LockPart then
+                    currentIndex = i
+                    break
+                end
+            end
+            local nextIndex = (currentIndex % #Options) + 1
+            Environment.Settings.LockPart = Options[nextIndex]
+            SelectionBtn.Text = Options[nextIndex]
+            Notify("Target Changed", "Now aiming at: " .. Options[nextIndex], 1.5)
+        end)
+    end
+
+    local function CreateButton(name, callback)
+        local Frame = Instance.new("Frame")
+        Frame.Size = UDim2.new(0, 290, 0, 35)
+        Frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        Frame.BorderSizePixel = 0
+        Frame.Parent = ScrollingFrame
+        Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 5)
+
+        local Button = Instance.new("TextButton")
+        Button.Size = UDim2.new(1, -20, 1, -8)
+        Button.Position = UDim2.new(0, 10, 0, 4)
+        Button.BackgroundColor3 = Environment.Visuals.AccentColor
+        Button.Text = name
+        Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Button.Font = Enum.Font.SourceSansBold
+        Button.TextSize = 16
+        Button.Parent = Frame
+        Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 5)
+
+        Button.MouseButton1Click:Connect(callback)
+    end
+
+    local function CreateSection(name)
+        local Label = Instance.new("TextLabel")
+        Label.Size = UDim2.new(0, 290, 0, 30)
+        Label.BackgroundTransparency = 1
+        Label.Text = name:upper()
+        Label.TextColor3 = Environment.Visuals.AccentColor
+        Label.Font = Enum.Font.SourceSansBold
+        Label.TextSize = 14
+        Label.Parent = ScrollingFrame
+    end
+
+    -- Build UI
+    CreateSection("Main Toggles")
+    CreateToggle("Master Enabled", Environment.Settings, "Enabled")
+    CreateToggle("Team Check", Environment.Settings, "TeamCheck")
+    CreateToggle("Wall Check", Environment.Settings, "WallCheck")
+    CreateToggle("Alive Check", Environment.Settings, "AliveCheck")
+    CreateToggle("Ignore Friends", Environment.Settings, "IgnoreFriends")
+
+    CreateSection("Aimbot Settings")
+    CreateToggle("Use Mouse Movement", Environment.Settings, "UseMouseMovement")
+    CreateToggle("Toggle Mode", Environment.Settings, "Toggle")
+    -- Custom Sensitivity with Spinbox (supports decimals)
+    CreateSliderWithSpinbox("Sensitivity", Environment.Settings, "Sensitivity", 0.1, 10, 1000, "x", true)
+    -- Prediction Amount with Spinbox (seconds ahead)
+    CreateSliderWithSpinbox("Prediction", Environment.Settings, "Prediction", 0, 1, 10, "sec", true)
+    CreateKeybind("Trigger Key", Environment.Settings, "TriggerKey")
+    CreateLockPartDropdown()
+
+    -- Max Distance control with spinbox
+    CreateSliderWithSpinbox("Max Aim Distance", Environment.Settings, "MaxDistance", 0, 1000, 1000000, "studs", false)
+
+    CreateSection("Friends List")
+    CreateButton("Refresh Friends List", RefreshFriendList)
+
+    CreateSection("Menu Config")
+    CreateKeybind("Menu Open Key", Environment.Settings, "MenuKey")
+
+    CreateSection("FOV Settings")
+    CreateToggle("FOV Enabled", Environment.FOVSettings, "Enabled")
+    CreateToggle("FOV Visible", Environment.FOVSettings, "Visible")
+    CreateSlider("FOV Radius", Environment.FOVSettings, "Amount", 10, 800, false)
+    CreateSlider("FOV Thickness", Environment.FOVSettings, "Thickness", 1, 10, false)
+    CreateToggle("Filled FOV", Environment.FOVSettings, "Filled")
+
+    -- Dynamic scrolling
+    RunService.RenderStepped:Connect(function()
+        local height = 0
+        for _, v in ipairs(ScrollingFrame:GetChildren()) do
+            if v:IsA("Frame") or v:IsA("TextLabel") then
+                height = height + v.AbsoluteSize.Y + Layout.Padding.Offset
+            end
+        end
+        ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, height + 20)
+    end)
+
+    Notify("GEMINI LOADED", "Press " .. Environment.Settings.MenuKey .. " to Open/Close", 4)
+    RefreshFriendList()
+end
+
+--// Cleanup
+Environment.Functions = {}
+function Environment.Functions:Exit()
+    for _, v in next, ServiceConnections do
+        pcall(function() v:Disconnect() end)
+    end
+    if FOVCircle then
+        pcall(function() FOVCircle:Remove() end)
+    end
+    if ScreenGui then
+        pcall(function() ScreenGui:Destroy() end)
+    end
+    getgenv().Aimbot = nil
+end
+
+--// Launch
+Load()
+CreateGUI()
